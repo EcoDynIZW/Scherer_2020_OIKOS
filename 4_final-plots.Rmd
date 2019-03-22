@@ -1,0 +1,1153 @@
+---
+title: "SwiFCoIBMove: Figures"
+author: "Cédric Scherer"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output: 
+  html_document:
+    theme: paper
+    #highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    link-citations: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+# Preparation
+
+## Setup
+
+```{r setup}
+## libraries
+library(tidyverse)  ## data wrangling
+library(magrittr)   ## ceci n'est pas une pipe
+library(glue)       ## glue strings together
+library(patchwork)  ## glue ggplots together
+library(viridis)    ## viridis color palettes
+library(ggridges)   ## how to draw a circle: geom_ridgeline_gradient
+library(EnvStats)   ## add sample size to ggplots
+
+## ggplot theme
+source("./R/ggtheme_grey.R")
+
+## enable sourcing of .Rmd files
+source("./R/source-rmd.R")
+```
+
+
+## Data
+
+```{r data}
+filedate <- "2019-03-05"
+
+## data
+destfile1 = glue::glue("./data/{filedate}_SwiFCoIBMove_inf.Rds")
+destfile2 = glue::glue("./data/{filedate}_SwiFCoIBMove_infmean.Rds")
+destfile3 = glue::glue("./data/{filedate}_SwiFCoIBMove_all.Rds")
+
+if (!file.exists(destfile1) | 
+    !file.exists(destfile2) | 
+    !file.exists(destfile3)) {
+  print("reading and cleaning raw data")
+  source_rmd("2_data.Rmd")
+} else if (exists("df_inf") && 
+           exists("df_infmean") && 
+           exists("df_all")) {
+  print("data available")
+} else {
+  print("loading data")
+  df_inf     <- readRDS(destfile1)
+  df_infmean <- readRDS(destfile2) 
+  df_all     <- readRDS(destfile3)
+}
+```
+
+
+## Prepare data for plotting
+
+```{r data-preparation}
+## set clean labels for factors
+lab_roam <- c("Correlated random walk", "Habitat-dependent movement", "Competition-driven movement")
+lab_roam_n <- c("Correlated\nrandom walk", "Habitat-dependent\nmovement", "Competition-driven\nmovement")
+lab_scen <- c("Homogeneous", "Large clusters", "Small clusters", "Random") 
+
+df_inf_plots <- df_inf %>% 
+  mutate(
+    roaming = factor(roaming, labels = lab_roam),
+    scenario = factor(scenario, levels = c("hom", "patch_l", "patch_s", "rand"), labels = lab_scen),
+    week_ext = if_else(is.na(week_ext), 625, week_ext)
+  ) %>% 
+  ungroup()
+
+df_infmean_plots <- df_infmean %>%
+  mutate(
+    roaming = factor(roaming, labels = lab_roam),
+    scenario = factor(scenario, levels = c("hom", "patch_l", "patch_s", "rand"), labels = lab_scen)
+  ) %>% 
+  group_by(roaming, scenario) %>% 
+  mutate(
+    pers = if_else(duration_weeks > 10*52, 1, 0),
+    inv = if_else(duration_weeks > 2.5*52, 1, 0)) %>% 
+  ungroup()
+
+## labels for weeks and years
+labs_weeks <- tibble("week" = seq(0, 572, by = 52)) %>% 
+  mutate(
+    weeks = ifelse(week %% 104 == 0, glue::glue("{week}"), ""),
+    weeks_year = ifelse(week %% 104 == 0, glue::glue("{week}\nyear {week/52}"), "")
+  ) %>% 
+  filter(week <= 520)
+
+weeks_year <- labs_weeks %>% pull(weeks_year)
+weeks_only <- labs_weeks %>% pull(weeks)
+```
+
+
+## Variables & Settings
+
+Plots visualize results for a case fatality risk of 0.5 (1:1 chance to become either transient or lethally infected). 
+
+```{r plot-settings}
+## case fatality risk to visualize
+cfr_filter <- 0.5
+
+## scenario to visualize (i.e. Fig. 2 single and Fig. 3)
+scenario_filter <- "Small clusters"
+
+## save plots?
+save <- TRUE
+
+## quality of plots
+dpi <- 750
+```
+
+
+# Plots
+
+## Fig. 1: Scheme
+
+### a) General dynamics
+
+```{r fig-1a-pop-dynamics-single, fig.width = 3.6, fig.height = 2.5}
+fig_1a <- df_all %>%
+  filter(
+    cfr == cfr_filter,
+    scenario == "patch_s",
+    roaming == "CD",
+    duration_weeks > 520
+  ) %>% 
+  filter(run == 2008) %>% 
+  dplyr::select(
+    week = week,
+    S = ind_susc,
+    I = ind_inf,
+    R = ind_immu
+  ) %>% 
+  gather(class, count, -week) %>% 
+  mutate(
+    class = factor(class, levels = c("S", "R", "I")),
+    count = ifelse((class %in% c("R", "I") & week < 95), NA_real_, count)  ## 95 == week_release
+  ) %>% 
+  ggplot(aes(week, count)) +   
+    geom_rect(aes(xmin = 53, xmax = 104, ymin = -Inf, ymax = Inf), fill = "grey90") +
+    geom_line(aes(color = class), size = 0.5) +
+    geom_vline(xintercept = 95, linetype = "dotted", color = "grey50", size = 0.4) +  ## 95 == week_release
+    scale_x_continuous(breaks = seq(0, 624, by = 52), limits = c(0, 624), 
+                       labels = c("0", "", "104", "", "", "", "", "312", "", "", "", "", "624")) + 
+    scale_y_continuous(labels = scales::comma_format()) +
+    scale_color_manual(name = NULL, values = c("grey20", "navajowhite3", "orangered")) +
+    theme(legend.position = c(0.6, 0.93), 
+          legend.box = "horizontal",
+          legend.background = element_rect(fill = "transparent"),
+          legend.text = element_text(face = "bold"),
+          plot.background = element_rect(fill = "transparent", colour = NA)) +
+    labs(x = "Week", y = "Individuals") +
+    guides(color = guide_legend(nrow = 1))
+```
+
+### b) Infections over time
+
+```{r fig-1b-inf-dynamics-single, fig.width = 3.7, fig.height = 2.5}
+df_1b <- df_inf_plots %>% 
+  filter(
+    cfr == cfr_filter,
+    scenario == "Small clusters",
+    roaming == "Competition-driven movement"
+  ) %>% 
+  mutate(pers = ifelse(duration_weeks > 520, ">10", "<10")) %>% 
+  group_by(scenario, roaming, week_pathogen) %>% 
+  mutate(
+    meanInf  = mean(ind_inf),
+    duration_weeks = if_else(duration_weeks == week_pathogen, duration_weeks, NA_real_)
+  )
+
+labs <- c("\u2264 10 years", "> 10 years")
+
+fig_1b <- ggplot() +   
+  geom_line(data = filter(df_1b, pers == ">10"), aes(week_pathogen, ind_inf, group = run, 
+            color = "<10"), size = 0.3, alpha = 0.4) +
+  geom_line(data = filter(df_1b, pers == "<10"), aes(week_pathogen, ind_inf, group = run, 
+            color = ">10"), size = 0.3, alpha = 0.4) +
+  geom_line(data = df_1b, aes(week_pathogen, meanInf), color = "black", size = 0.35) +
+  geom_rug(data = filter(df_1b, pers == "<10"), aes(duration_weeks), 
+           sides = "b", alpha = 0.4, size = 0.3) +
+  scale_x_continuous(breaks = seq(0, 520, by = 52), limits = c(0, 520), labels = weeks_only) + 
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_color_manual(values = c(">10" = "grey20", "<10" = "tan1"), name = NULL, labels = labs) +
+  theme(legend.position = c(0.75, 0.85), 
+        legend.box = "horizontal",
+        legend.background = element_rect(fill = "transparent"),
+        plot.background = element_rect(fill = "transparent",colour = NA)) +
+  labs(x = "Week since pathogen release", y = "Infected individuals")
+```
+
+### c) Outbreak duration
+
+```{r fig-1c-duration-single, fig.width = 3.5, fig.height = 2.5}
+n <- df_infmean_plots %>%   
+  group_by(roaming, scenario, cfr) %>%
+  count() %>% 
+  ungroup() %>% 
+  summarize(n = unique(n)) %>% 
+  pull()
+
+df_1c <- df_infmean_plots %>% 
+  filter(
+    cfr == cfr_filter,
+    scenario == "Small clusters",
+    roaming == "Competition-driven movement"
+  ) %>%
+  mutate(duration_quarter = if_else(duration_quarter > 40, 48, floor(duration_quarter))) %>% 
+  group_by(roaming, cfr, scenario, duration_quarter) %>% 
+  summarize(prop = n() / n)
+
+fig_1c <- ggplot(filter(df_1c, duration_quarter != 48), aes(duration_quarter / 4, prop)) + 
+  geom_bar(aes(group = duration_quarter), fill = "grey30", stat = "identity", width = 0.2) +
+  geom_bar(data = filter(df_1c, duration_quarter == 48), 
+           aes(group = duration_quarter), fill = "tan1", stat = "identity", width = 0.2) +
+  geom_vline(xintercept = 11, linetype = "dotted", size = 0.5) +
+  geom_vline(xintercept = 2.625, linetype = "dotted", color = "grey30", size = 0.4) +
+  geom_vline(xintercept = 5.125, linetype = "dotted", color = "grey30", size = 0.4) +
+  geom_vline(xintercept = 7.625, linetype = "dotted", color = "grey30", size = 0.4) +
+  scale_x_continuous(breaks = c(0, 2.5, 5, 7.5, 10, 12), 
+                     labels = c(0, 2.5, 5, 7.5, 10, ">10")) +
+  scale_y_continuous(breaks = c(0, 0.1, 0.2, 0.3)) +
+  expand_limits(x = c(0, 12.25), y = c(0, 0.22)) +
+  theme(legend.position = "none",
+        plot.background = element_rect(fill = "transparent",colour = NA)) +
+  labs(x = "Outbreak duration (years)", y = "Proportion of runs")
+```
+
+### Full panel
+
+```{r fig-1-full-panel, fig.width = 11.7, fig.height = 2.5}
+((fig_1a + plot_spacer() + fig_1b + plot_spacer() + fig_1c) * 
+    theme(line = element_line(color = "black"), 
+          rect = element_rect(color = "black"), 
+          panel.border = element_rect(color = "black")) + 
+   plot_layout(widths = c(1.3, 0.02, 1.4, 0.02, 1.5), nrow = 1))
+
+if (save == T) { ggsave("./plots/final/Fig1_workflow.png", width = 11.7, height = 2.5, dpi = dpi) }
+```
+
+
+## Fig. 2: Persistence probabilities
+
+```{r fig-2-pers-groups, fig.width = 13.5, fig.height = 7.5}
+df_2 <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter)
+
+## per movement strategy
+fig_2_roam <- df_2 %>% 
+  group_by(roaming) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv)
+  ) %>%
+  mutate(group = as.factor("All landscape scenarios")) %>%
+  ungroup() %>% 
+    ggplot(aes(x = roaming, color = roaming)) +   
+    geom_bar(aes(y = pers_mean, fill = roaming), stat = "identity", position = "dodge", width = 0.7) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_color_manual(values = c("grey80", "grey55", "grey30"), guide = F) + 
+    scale_fill_manual(values = c("grey80", "grey55", "grey30"), name = "Movement strategy") + 
+    labs(x = NULL, y = "Persistence probability", tag = "a  ")
+
+## per landscape scenario
+fig_2_scen <- df_2 %>% 
+  group_by(scenario) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv)
+  ) %>%
+  mutate(group = as.factor("All movement\nstrategies")) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, color = scenario)) +   
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "none",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
+    labs(x = NULL, y = "Persistence probability", tag = "b  ")
+
+fig_2_detail <- df_2 %>% 
+  group_by(roaming, scenario) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv)
+  ) %>%
+  ungroup() %>% 
+  mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
+  ggplot(aes(x = scenario, color = scenario)) + 
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = "Landscape scenario") +
+    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
+    labs(x = NULL, y = "Persistence probability", tag = "c  ")
+
+(fig_2 <- plot_spacer() + fig_2_roam + fig_2_scen + fig_2_detail + 
+            plot_layout(nrow = 2, heights = c(1, 1.5), widths = c(1, 3)))
+
+if (save == T) { ggsave("./plots/final/Fig2_pers_groups.png", width = 13.5, height = 7.5, dpi = dpi) }
+```
+
+
+## Fig. 3: Temporal outbreak dynamics
+
+```{r fig-3-temp-dynamics, fig.width = 8.9, fig.height = 6.9}
+## normed transmission per habitat quality - over time
+df_3 <- df_inf_plots %>% 
+  filter(
+    cfr == cfr_filter,
+    week_pathogen > 0, 
+    week_pathogen < 521
+  )
+
+df_trans <- df_3 %>%
+  filter(duration_weeks > 260) %>% 
+  dplyr::select(
+    run,
+    week_pathogen,
+    roam_all,
+    scenario,
+    roaming,
+    trans_g,
+    trans_m,
+    trans_w,
+    trans_b
+  ) %>% 
+  gather(trans, trans_count, -c(run:roaming)) %>% 
+  mutate(
+    trans = substr(trans, nchar(trans), nchar(trans) + 1),
+    trans_count = trans_count / roam_all,
+    quarter = week_pathogen %/% 13
+  ) %>% 
+  filter(trans > 0) %>% 
+  group_by(roaming, scenario, quarter, trans) %>%
+  summarize(
+    avg = mean(trans_count, na.rm = T), 
+    upr = avg + sd(trans_count, na.rm = T), 
+    lwr = avg - sd(trans_count, na.rm = T)
+  ) %>%
+  ungroup() %>% 
+  mutate(
+    lwr = ifelse(lwr < 0, 0, lwr),
+    avg = ifelse(trans == "b" & scenario == "Homogeneous", NA, avg),
+    lwr = ifelse(trans == "b" & scenario == "Homogeneous", NA, lwr),
+    upr = ifelse(trans == "b" & scenario == "Homogeneous", NA, upr),
+    type = case_when(trans == "g" ~ "Group-living hosts",
+                     trans == "m" ~ "Ranging hosts",
+                     trans == "w" ~ "Within-cluster",
+                     trans == "b" ~ "Between-cluster")
+  ) 
+  
+n <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%   
+  group_by(roaming, scenario) %>%
+  count() %>% 
+  ungroup() %>% 
+  summarize(n = unique(n)) %>% 
+  pull()
+
+df_dur <- df_infmean_plots %>% 
+  filter(
+    cfr == cfr_filter,
+    duration_weeks < 521
+  ) %>% 
+  mutate(duration_quarter = if_else(duration_quarter > 40, 50, floor(duration_quarter))) %>% 
+  group_by(roaming, scenario, duration_quarter) %>% 
+  summarize(prop = n() / n)
+
+df_ext <- df_3 %>% 
+  group_by(roaming, scenario, run) %>% 
+  summarize(week_ext = max(week_ext - week_release)) %>% 
+  filter(week_ext < 520) %>% 
+  mutate(avg = 0)
+
+(fig_3 <- df_trans %>% 
+  filter(trans %in% c("w", "b")) %>%
+  ggplot(aes(quarter / 4, avg)) +
+    geom_bar(data = filter(df_dur, duration_quarter < 50), aes(duration_quarter / 4 + 0.125, prop / 5), 
+             stat = "identity", width = 0.2, fill = "grey85") +
+    geom_vline(aes(xintercept = 2.75), linetype = "dashed", color = "grey60", size = 0.3) +
+    geom_ribbon(aes(ymin = lwr, ymax = upr, fill = type), alpha = 0.25) + 
+    geom_line(aes(color = type), size = 0.5) +
+    geom_rug(data = df_ext, aes(x = week_ext / 52), 
+           sides = "b", color = "grey60", alpha = 0.4, size = 0.4) +
+    facet_grid(scenario ~ roaming) +
+    scale_x_continuous(breaks = seq(0, 10, by = 2.5), labels = seq(0, 10, by = 2.5)) +
+    scale_y_continuous(limits = c(-0.001, 0.055), breaks = seq(0, 0.06, by = 0.02), 
+                       sec.axis = sec_axis(~ . * 5)) +
+    scale_color_manual(values = c("#f6b233", "#6a009a"), name = NULL) +
+    scale_fill_manual(values  = c("#f5980a", "#a332d7"), name = NULL) +
+    labs(x = "Outbreak duration (years)", 
+         y = "Weekly transmissions per individual") +
+    theme(legend.position = "bottom",
+          strip.background.y = element_blank(),
+          strip.text.y = element_blank(),
+          strip.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_text(size = 12),
+          axis.text = element_text(size = 10),
+          legend.text = element_text(size = 10.5)))
+
+if (save == T) { ggsave("./plots/final/Fig3_dynamics_b+w.png", width = 8.9, height = 6.9, dpi = dpi) }
+```
+
+
+## Fig. 4: Probabilities of invasion success and persistence per case fatality risk
+
+```{r fig-4-pers-cfr-tile, fig.width = 8, fig.height = 6.3}
+df_4 <- df_infmean_plots %>% 
+  mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
+  group_by(roaming, scenario, cfr) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv)
+  ) %>% 
+  ungroup()
+
+fig_4a <- ggplot(df_4, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = pers_mean)) +
+  facet_wrap(~ roaming) + 
+  scale_fill_viridis(option = "viridis", name = "Probability", limits = c(0, 0.48),
+                     breaks = seq(0, 0.4, by = 0.1)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Case fatality ratio", y = NULL, tag = "a", 
+       title = "Long-term persistence (outbreak duration > 10 years)")
+
+fig_4b <- ggplot(df_4, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = inv_mean)) +
+  facet_wrap(~ roaming) + 
+  scale_fill_viridis(option = "cividis", name = "Probability", limits = c(0, 1)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Case fatality ratio", y = NULL, tag = "b", 
+       title = "Successful invasion (outbreak duration > 2.5 years)")
+
+(fig_4 <- (fig_4a + fig_4b) *
+  theme(strip.text = element_text(size = 11),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 11),
+        axis.title.x = element_text(size = 11),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(size = 14),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10, color = "grey40")) + 
+  plot_layout(ncol = 1))
+
+if (save == T) { ggsave("./plots/final/Fig4_pers_cfr_tile.png", width = 8, height = 6.3, dpi = dpi) }
+```
+
+
+## Fig. 5: Multipanel movement + landscape consequences
+
+```{r fig-5-MultiBox, fig.width = 8.5, fig.height = 10.5}
+## data seth
+df_quarter <- df_inf_plots %>% 
+  filter(
+    cfr == cfr_filter,
+    week_pathogen > 52
+  ) %>% 
+  mutate(
+    roaming = factor(roaming, labels = lab_roam_n),
+    quarter = week %/% 13 + 1
+  ) %>% 
+  dplyr::select(
+    run, roaming, scenario, ## vars
+    week_pathogen, quarter, duration_weeks, ## time
+    dens_var_all, dens_var_roam,  ## a: density of hosts
+    visits_mean,  ## b: visits by ranging males
+    contacts_1:contacts_9, patches_1:patches_9, roam_inf, ## c: quality-dependent contact rates
+    week_inf_max,  ## d: week of maximum spread
+    trans_w, trans_b, patches_0  ## f: within- and between-patch trans
+  ) %>% 
+  mutate(
+    dens_var_all = ifelse(dens_var_all == 0, NA, dens_var_all),
+    dens_var_roam = ifelse(dens_var_roam == 0, NA, dens_var_roam)
+  )
+
+## a) density of hosts
+df_m1 <- df_quarter %>% 
+  group_by(roaming, scenario, run, quarter) %>% 
+  summarize(
+    all = median(dens_var_all) / 4,
+    males = median(dens_var_roam)
+  ) %>% 
+  gather(type, avg, -roaming, -scenario, -run, -quarter) %>% 
+  mutate(type = factor(type, levels = c("all", "males"), 
+                       labels = c("All hosts", "Moving hosts")))
+
+fig_5a <- ggplot(df_m1, aes(x = scenario, y = avg, group = type, color = type)) +   
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.75, position = position_dodge(0.85), 
+               alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 130), breaks = seq(0, 100, by = 50)) +
+  scale_color_manual(values = c("#69bdb5", "#4e41db"), name = "Group:") + 
+  labs(x = "Landscape scenario", y = "\nVariance in\nhost density", 
+       tag = "a", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.title = element_text(size = 11, face = "plain"),
+        legend.text = element_text(size = 10),
+        strip.text = element_text(size = 13))
+
+## b) visits by ranging males
+df_m2 <- df_quarter %>% 
+  group_by(roaming, scenario, run, quarter) %>% 
+  summarize(
+    visits_mean = median(visits_mean, na.rm = T)
+  ) %>% 
+  gather(type, avg, -roaming, -scenario, -run, -quarter) %>% 
+  group_by(roaming, scenario, type)
+
+fig_5b <- ggplot(df_m2, aes(x = scenario, y = avg)) +   
+  geom_boxplot(aes(group = scenario), width = 0.6,
+               color = "#696969", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 12), breaks = seq(0, 12, by = 6)) +
+  labs(x = "Landscape scenario", y = "\nVisited patches\nper week", 
+       tag = "b", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## c) contact rates per quality class
+df_m3 <- df_quarter %>% 
+  filter(roam_inf > 0) %>% 
+  mutate(
+    patches_low = patches_1 + patches_2 + patches_3,
+    patches_med = patches_4 + patches_5 + patches_6,
+    patches_hig = patches_7 + patches_8 + patches_9,
+    contacts_low = (contacts_1 + contacts_2 + contacts_3) / (patches_low / 1250) / roam_inf,
+    contacts_med = (contacts_4 + contacts_5 + contacts_6) / (patches_med / 1250) / roam_inf,
+    contacts_hig = (contacts_7 + contacts_8 + contacts_9) / (patches_hig / 1250) / roam_inf
+  ) %>% 
+  group_by(roaming, scenario, run, quarter) %>% 
+  summarize(
+    low = median(contacts_low),
+    med = median(contacts_med),
+    hig = median(contacts_hig)
+  ) %>% 
+  gather(type, avg, -roaming, -scenario, -run, -quarter) %>% 
+  mutate(type = factor(type, levels = c("low", "med", "hig"), 
+                             labels = c("Low ", "Medium", "High")))
+
+hom <- df_m3  %>% 
+  group_by(roaming, scenario) %>% 
+  summarize(mean = mean(avg, na.rm = T))
+
+fig_5c <- ggplot(df_m3, aes(x = scenario, y = avg, group = type, color = type)) +   
+  geom_path(data = hom, aes(x = scenario, y = mean, group = roaming), 
+            color = "grey60", linetype = "dashed", size = 0.5) +
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.7, 
+               position = position_dodge(0.85, preserve = "single"), 
+               fill = "white", outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 80), breaks = seq(0, 75, by = 25)) +
+  scale_color_manual(values = c("#8cd085", "#3c8834", "#1c3f18"), name = "Habitat quality:") + 
+  labs(x = "Landscape scenario", y = "\nContact rates of\n infected ranging males", 
+       tag = "c", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.title = element_text(size = 10.5, face = "plain"),
+        legend.text = element_text(size = 10),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## d) week of maximum spread
+df_m4 <- df_quarter %>% 
+  group_by(roaming, scenario, run) %>%  ## no quarter since unique values per run
+  summarize(
+    max = max(week_inf_max)
+  ) %>% 
+  gather(type, max, -roaming, -scenario, -run)
+
+fig_5d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
+  geom_boxplot(aes(group = scenario), width = 0.6,
+               color = "#a01e1e", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 55), breaks = seq(0, 50, by = 25)) +
+  labs(x = "Landscape scenario", y = "\nWeek of maximum\npathogen spread", 
+       tag = "d", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## e) maximum number of infectious cells
+df_m5 <- df_inf_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(
+    roaming = factor(roaming, labels = lab_roam_n),
+    cell_infectious = cell_infectious / (1250 - patches_0)
+  ) %>% 
+  dplyr::select(run, roaming, scenario, cell_infectious) %>% 
+  group_by(roaming, scenario, run) %>%  ## no quarter since unique values per run
+  summarize(
+    max = max(cell_infectious)
+  ) %>% 
+  gather(type, max, -roaming, -scenario, -run)
+
+fig_5e <- ggplot(df_m5, aes(x = scenario, y = max)) +   
+  geom_boxplot(aes(group = scenario), width = 0.6,
+               color = "#cc5d00", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.5)) +
+  labs(x = "Landscape scenario", y = "\nMaximum proportion\nof infected patches", 
+       tag = "e", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## f) trans within + between
+df_m6 <- df_quarter %>% 
+  dplyr::select(
+    run, quarter, scenario, roaming, 
+    trans_w, trans_b, patches_0
+  ) %>% 
+  mutate(
+    trans_w = trans_w / (1250 - patches_0),
+    trans_b = trans_b / (1250 - patches_0),
+    trans_a = trans_w + trans_b
+  ) %>% 
+  group_by(roaming, scenario, run, quarter) %>% 
+  summarize(
+    trans_w = mean(trans_w, na.rm = T),
+    trans_b = mean(trans_b, na.rm = T),
+    trans_a = mean(trans_a, na.rm = T)
+  ) %>% 
+  mutate(trans_w = trans_w / trans_a, trans_b = trans_b / trans_a) %>% 
+  dplyr::select(-trans_a) %>% 
+  gather(type, avg, -roaming, -scenario, -run, -quarter) %>% 
+  mutate(
+    type = substr(type, nchar(type), nchar(type) + 1),
+    type = ifelse(scenario == "Homogeneous", glue::glue("{type}_hom"), glue::glue("{type}_het"))
+  ) %>% 
+  filter(type != "b_hom") %>% 
+  mutate(type = factor(type, levels = c("b_het", "w_het", "w_hom"),
+                             labels = c("Between-cluster", "Within-cluster", "Homogeneous")))
+
+fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg, group = type, color = type)) +   
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.75, position = position_dodge(0.85), 
+               alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.5)) +
+  scale_color_manual(values = c("#d48d09", "#580080", "#8a8a8a"), name = "Transmission:") + 
+  labs(x = "Landscape scenario", y = "\nProportion of\ninfections", 
+       tag = "f", title = NULL, subtitle = NULL) +
+  theme(axis.text.x = element_text(size = 11, angle = 33, hjust = 1, vjust = 1),
+        axis.title.x = element_text(size = 11),
+        legend.title = element_text(size = 11, face = "plain"),
+        legend.text = element_text(size = 10),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+ 
+((fig_5 <- fig_5a + fig_5b + fig_5c + fig_5d + fig_5e + fig_5f)  *
+    theme(axis.text.y = element_text(size = 10),
+          axis.title.y = element_text(size = 10.5),
+          plot.margin = margin(1, 1, 1, 1)) +
+    plot_layout(ncol = 1))
+
+## final panel
+if (save == T) { ggsave("./plots/final/Fig5_multi_box.png", width = 8.5, height = 10.5, dpi = 750) }
+```
+
+```{r fig-5-multi-median, fig.width = 9, fig.height = 11, eval = F, include = F}
+## a) density of hosts
+fig_5b_a <- df_m1  %>% 
+  group_by(roaming, scenario, type) %>% 
+  summarize(avg = mean(avg)) %>% 
+  ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+    geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 50)) +
+    scale_color_manual(values = c("#69bdb5", "#4e41db"), name = "Group:") + 
+    scale_shape_manual(values = c(19, 17), name = "Group:") +
+    labs(x = "Landscape scenario", y = "\nVariance in\nhost density", 
+         tag = "a", title = NULL, subtitle = NULL) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          legend.title = element_text(size = 11, face = "plain"),
+          legend.text = element_text(size = 10),
+          strip.text = element_text(size = 13))
+
+## b) visits by ranging males
+fig_5b_b <- df_m2  %>% 
+  summarize(avg = mean(avg)) %>% 
+  ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+    geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(0, 12.5), breaks = seq(0, 12, by = 6)) +
+    scale_color_manual(values = c("#696969"), guide = F) + 
+    scale_shape_manual(values = c(19, 17, 15), guide = F) + 
+    labs(x = "Landscape scenario", y = "\nVisited patches\nper week", 
+         tag = "b", title = NULL, subtitle = NULL) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          strip.text = element_blank(),
+          strip.background = element_blank())
+
+## c) contact rates per quality class
+fig_5b_c <- df_m3  %>% 
+  group_by(roaming, scenario, type) %>% 
+  summarize(avg = mean(avg)) %>% 
+  ggplot(aes(x = scenario, y = avg)) +   
+    geom_path(data = hom, aes(x = scenario, y = mean, group = roaming), 
+              color = "grey60", linetype = "dashed", size = 0.5) +
+    geom_path(aes(group = type, color = type),
+              position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(aes(group = type, color = type, shape = type),
+               position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(0, 58), breaks = seq(0, 50, by = 25)) +
+    scale_color_manual(values = c("#8cd085", "#3c8834", "#1c3f18"), name = "Habitat quality:") + 
+    scale_shape_manual(values = c(19, 17, 15), name = "Habitat quality:") + 
+    labs(x = "Landscape scenario", y = "\nContact rates of\n infected ranging males", 
+         tag = "c", title = NULL, subtitle = NULL) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          legend.title = element_text(size = 10.5, face = "plain"),
+          legend.text = element_text(size = 10),
+          strip.text = element_blank(),
+          strip.background = element_blank())
+
+## d) week of maximum spread
+fig_5b_d <- df_m4 %>% 
+  group_by(roaming, scenario, type) %>% 
+  summarize(avg = median(max, na.rm = T)) %>% 
+  ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+    geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(0, 55), breaks = seq(0, 50, by = 25)) +
+    scale_color_manual(values = c("#a01e1e"), guide = F) + 
+    scale_shape_manual(values = c(19), guide = F) + 
+    labs(x = "Landscape scenario", y = "\nWeek of maximum\npathogen spread", 
+         tag = "d", title = NULL, subtitle = NULL) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          strip.text = element_blank(),
+          strip.background = element_blank())
+
+## e) cells infectious
+fig_5b_e <- df_m5 %>% 
+  group_by(roaming, scenario, type) %>% 
+  summarize(avg = mean(max, na.rm = T)) %>% 
+  ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+    geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.5)) +
+    scale_color_manual(values = c("#e66800"), guide = F) + 
+    scale_shape_manual(values = c(19), guide = F) + 
+    labs(x = "Landscape scenario", y = "\nMaximum proportion\nof infectious patches", 
+         tag = "e", title = NULL, subtitle = NULL) +
+    theme(axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          strip.text = element_blank(),
+          strip.background = element_blank())
+
+## f) trans within + between
+fig_5b_f <- df_m6 %>% 
+  group_by(roaming, scenario, type) %>% 
+  summarize(avg = median(avg, na.rm = T)) %>% 
+  ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+    geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+    facet_grid(~ roaming) +
+    scale_y_continuous(limits = c(-0.1, 1.1), breaks = seq(0, 1, by = 0.5)) +
+    scale_color_manual(values = c("#d48d09", "#580080", "#8a8a8a"), name = "Transmission:") + 
+    scale_shape_manual(values = c(19, 17, 15), name = "Transmission:") + 
+    labs(x = "Landscape scenario", y = "\nProportion of\ninfections", 
+         tag = "f", title = NULL, subtitle = NULL) +
+    theme(axis.text.x = element_text(size = 11, angle = 33, hjust = 1, vjust = 1),
+          axis.title.x = element_text(size = 11),
+          legend.title = element_text(size = 11, face = "plain"),
+          legend.text = element_text(size = 10),
+          strip.text = element_blank(),
+          strip.background = element_blank())
+
+## final panel
+(fig_5b <- (fig_5b_a + fig_5b_b + fig_5b_c + fig_5b_d + fig_5b_e + fig_5b_f) *
+    theme(axis.text.y = element_text(size = 10),
+          axis.title.y = element_text(size = 10.5),
+          plot.margin = margin(1, 1, 1, 1)) +
+    plot_layout(ncol = 1))
+
+if (save == T) { ggsave("./plots/final/Fig5b_multi_median.png", width = 8.5, height = 10.5, dpi = dpi) }
+```
+
+
+## Fig. S3: Movement weights
+
+```{r fig-s3-move-weights, fig.width = 12, fig.height = 6.15}
+## CRW
+x <- seq(-1, 1, length = 100)
+d <- data.frame(
+  x = x,
+  y = -sqrt(1 - x^2),
+  height = 2*sqrt(1 - x^2)
+)
+
+p_CRW <- ggplot(d, aes(x, y, height = height, grpup = 1, fill = x)) +
+  geom_ridgeline_gradient(color = NA) +
+  scale_fill_viridis_c(guide = "none", option = "cividis") +
+  coord_flip() +
+  labs(x = NULL, y = "", title = "Correlated\nrandom walk\n") +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_blank())
+
+## habitat-dependent
+qual <- seq(0, 9, by = 0.01)
+x <- seq(0, 2, by = 0.01)
+HD <- expand.grid(qual, x)
+colnames(HD) <- c("qual", "x")
+
+titleH1 <- "\nHabitat quality B"
+titleH2 <- ""
+
+p_HD <- ggplot(HD, aes(x, qual)) +
+  geom_tile(aes(fill = qual)) +
+  scale_fill_viridis_c(option = "cividis") +
+  scale_x_continuous(breaks = c(-5, 5), expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, 9, by = 1),expand = c(0, 0)) +
+  labs(x = titleH2, y = titleH1, title = "Habitat-dependent\nmovement\n") +
+  theme(legend.position = "none",
+        axis.ticks = element_line(colour = "black", size = 0.25),
+        panel.border = element_blank())
+
+## density dependent
+dens <- seq(0, 80, by = 0.1)
+K <- seq(0, 40, by = 0.1)
+DD <- expand.grid(dens, K)
+colnames(DD) <- c("dens", "K")
+
+titleD1 <- "\nNumber of conspecifics"
+titleD2 <- "Carrying capacity K"
+
+p_DD <- ggplot(DD, aes(dens, K)) +
+  geom_tile(aes(fill = K - dens)) +
+  scale_fill_viridis_c(option = "cividis") +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(breaks = seq(0, 80, by = 10), expand = c(0, 0)) +
+  labs(x = titleD2, y = titleD1, title = "Competition-driven\nmovement\n") +
+  theme(legend.position = "none",
+        axis.ticks = element_line(colour = "black", size = 0.25),
+        panel.border = element_blank())
+
+## full plot
+(fig_s3 <- (p_CRW + p_HD + p_DD) * theme(plot.title = element_text(size = 18)) + 
+    plot_layout(ncol = 3, widths = c(3.5, 1, 3)))
+
+ggsave("./plots/final/FigS3_move_weights.png", width = 12, height = 6.15, dpi = dpi)
+```
+
+
+## Fig. S7: Persistence probabilities per case fatality ratio and persistence threshold
+
+```{r fig-s7-facet-cf, fig.width = 7, fig.height = 8}
+df_s7 <- df_infmean_plots %>% 
+  mutate(
+    pers_5 = if_else(duration_weeks > 5*52, 1, 0),
+    pers_7 = if_else(duration_weeks > 7.5*52, 1, 0),
+    roaming = factor(roaming, labels = lab_roam_n)
+  ) %>% 
+  group_by(roaming, scenario, cfr) %>%
+  summarize(
+    p2 = mean(inv),
+    p5 = mean(pers_5),
+    p7 = mean(pers_7),
+    p10 = mean(pers)
+  ) %>% 
+  ungroup() %>% 
+  gather(threshold, prob, -roaming, -scenario, -cfr) %>% 
+  mutate(
+    threshold = case_when(
+      threshold == "p2" ~ "> 2.5 years", 
+      threshold == "p5" ~ "> 5 years",
+      threshold == "p7" ~ "> 7.5 years",
+      threshold == "p10" ~ "> 10 years"),
+    threshold = factor(threshold, levels = c("> 2.5 years", "> 5 years", "> 7.5 years", "> 10 years")))
+
+(fig_s7 <- ggplot(df_s7, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = prob)) +
+  facet_grid(threshold ~ roaming) + 
+  scale_fill_viridis(name = "Persistence probability", limits = c(0, 1),
+                     guide = guide_colourbar(direction = "horizontal",
+                                            barheight = unit(4, units = "mm"), 
+                                            barwidth = unit(75, units = "mm"),
+                                            draw.ulim = FALSE, title.position = 'top',
+                                            title.hjust = 0.5, label.hjust = 0.5)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Case fatality ratio", y = NULL) + 
+  theme(strip.text = element_text(size = 11),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size = 11),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(size = 14),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10, color = "grey40"),
+        legend.position = "bottom"))
+
+if (save == T) { ggsave("./plots/final/FigS7_pers_cfr_all.png", width = 7, height = 8, dpi = dpi) }
+```
+
+
+## Fig. S8: Outbreak duration (time to pathogen extinction)
+
+```{r fig-s8-time2extinction, fig.width = 12, fig.height = 7.1}
+n <- df_infmean_plots %>%   
+  group_by(roaming, cfr, scenario) %>%
+  count() %>% 
+  ungroup() %>% 
+  summarize(n = unique(n)) %>% 
+  pull()
+
+df_s8 <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(duration_quarter = if_else(duration_quarter > 40, 50, floor(duration_quarter))) %>% 
+  group_by(roaming, scenario, duration_quarter) %>% 
+  summarize(prop = n() / n)
+
+(fig_s8 <- ggplot(filter(df_s8, duration_quarter != 50), aes(duration_quarter / 4, prop)) + 
+  geom_bar(aes(group = duration_quarter, fill = scenario), stat = "identity", width = 0.2) +
+  geom_bar(data = filter(df_s8, duration_quarter == 50), 
+           aes(group = duration_quarter, fill = scenario), stat = "identity", width = 0.2) +
+  geom_vline(xintercept = 11.25, linetype = "dotted") +
+  facet_grid(scenario ~ roaming) +
+  scale_fill_viridis_d(option = "inferno", begin = 0.85, end = 0.15, guide = F) +
+  scale_x_continuous(breaks = seq(0, 12.5, by = 2.5),
+                     labels = c(0, 2.5, 5, 7.5, 10, "> 10 years")) +
+  scale_y_continuous(breaks = seq(0, 0.4, 0.2)) +
+  expand_limits(x = c(0, 13), y = c(0, 0.41)) +
+  theme(panel.grid.major.y = element_line(color = "grey90", size = 0.4),
+        panel.grid.minor.y = element_line(color = "grey90", size = 0.4)) +
+  labs(x = "Outbreak duration (time to pathogen extinction)", y = "Proportion of simulation runs"))
+
+if (save == T) { ggsave("./plots/final/FigS8_time2extinction.png", width = 12, height = 7.1, dpi = dpi) }
+```
+
+
+## Fig. S9: Temporal dynamics of transmission rates by group-living and ranging individuals
+
+```{r fig-s9-trans-males+group, fig.width = 9, fig.heigth = 6.7}
+(fig_s9 <- df_trans %>% 
+  filter(trans %in% c("g", "m")) %>%
+  ggplot(aes(quarter / 4, avg)) +
+    geom_vline(aes(xintercept = 2.625), linetype = "dashed", color = "grey60", size = 0.3) +
+    geom_ribbon(aes(ymin = lwr, ymax = upr, fill = type), alpha = 0.25) + 
+    geom_line(aes(color = type), size = 0.5) +
+    geom_rug(data = df_ext, aes(x = week_ext / 52), 
+           sides = "b", color = "grey60", alpha = 0.5, size = 0.3) +
+    facet_grid(scenario ~ roaming) +
+    scale_x_continuous(breaks = seq(0, 10, by = 2.5), labels = seq(0, 10, by = 2.5)) +
+    scale_y_continuous(limits = c(-0.001, 0.25), breaks = seq(0, 0.3, by = 0.1)) +
+    scale_color_manual(values = c("#7cdc9e", "#766ce3"), name = NULL) +
+    scale_fill_manual(values  = c("#7cdc9e", "#766ce3"), name = NULL) +
+    labs(x = "Outbreak duration (years)", 
+         y = "Weekly transmissions per individual") +
+    theme(legend.position = "bottom",
+          strip.text.x = element_text(size = 12),
+          strip.text.y = element_text(size = 11.5),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_text(size = 12),
+          axis.text = element_text(size = 10),
+          legend.text = element_text(size = 10.5)))
+
+if (save == T) { ggsave("./plots/final/FigS9_dynamics_g+m.png", width = 9, height = 6.7, dpi = dpi) }
+```
+
+
+## Fig. S10: Multipanel movement + landscape consequences (boxplot + jitter)
+
+```{r fig-s10-MultiBoxJitter, fig.width = 11, fig.height = 16}
+## a) density of hosts
+fig_s10a <- ggplot(df_m1, aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+  geom_jitter(position = position_jitterdodge(dodge.width = 0.85, jitter.width = 0.15), 
+              alpha = 0.1, size = 0.25) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.75, position = position_dodge(0.85), 
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4, show.legend= F) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 175), breaks = seq(0, 150, by = 50)) +
+  scale_color_manual(values = c("#69bdb5", "#766ce3"), name = "Group:") + 
+  scale_shape_manual(values = c(19, 17), name = "Group:") + 
+  guides(colour = guide_legend(override.aes = list(alpha = 0.75, size = 4))) +
+  labs(x = "Landscape scenario", y = "\nVariance in\nhost density", 
+       tag = "a", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+
+## b) visits by ranging males
+fig_s10b <- ggplot(df_m2, aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+  geom_jitter(width = 0.175, alpha = 0.1, size = 0.25, shape = 19) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.7,
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 12.5), breaks = seq(0, 12, by = 6)) +
+  scale_color_manual(values = c("#696969"), guide = F) + 
+  scale_shape_manual(values = c(19, 17, 15), guide = F) + 
+  labs(x = "Landscape scenario", y = "\nVisited patches\nper week", 
+       tag = "b", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## c) contact rates per quality class
+fig_s10c <- ggplot(df_m3, aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+  geom_jitter(position = position_jitterdodge(dodge.width = 0.75, jitter.width = 0.15), 
+              alpha = 0.1, size = 0.25) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.75, 
+               position = position_dodge2(0.6, preserve = "single"), 
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4, show.legend = F) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, by = 25)) +
+  scale_color_manual(values = c("#8cd085", "#3c8834", "#1c3f18"), name = "Habitat quality:") + 
+  scale_shape_manual(values = c(19, 17, 15), name = "Habitat quality:") + 
+  guides(colour = guide_legend(override.aes = list(alpha = 0.75, size = 4))) +
+  labs(x = "Landscape scenario", y = "\nContact rates of\n infected ranging males", 
+       tag = "c", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## d) week of maximum spread
+fig_s10d <- ggplot(df_m4, aes(x = scenario, y = max, group = type, color = type, shape = type)) +   
+  geom_jitter(width = 0.175, alpha = 0.5, size = 0.8) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.7,
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 55), breaks = seq(0, 50, by = 25)) +
+  scale_color_manual(values = c("#b22222"), guide = F) + 
+  scale_shape_manual(values = c(19), guide = F) + 
+  labs(x = "Landscape scenario", y = "\nWeek of maximum\npathogen spread", 
+       tag = "d", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## e) maximum number of infectious cells
+fig_s10e <- ggplot(df_m5, aes(x = scenario, y = max, group = type, color = type, shape = type)) +   
+  geom_jitter(width = 0.175, alpha = 0.5, size = 0.8) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.7,
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.5)) +
+  scale_color_manual(values = c("#ff7400"), guide = F) + 
+  scale_shape_manual(values = c(19), guide = F) + 
+  labs(x = "Landscape scenario", y = "\nMaximum proportion\nof infected patches", 
+       tag = "e", title = NULL, subtitle = NULL) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank(),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+
+## f) trans within + between
+fig_s10f <- ggplot(df_m6, aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
+  geom_jitter(position = position_jitterdodge(dodge.width = 0.85, jitter.width = 0.15), 
+              alpha = 0.1, size = 0.25) + 
+  geom_boxplot(aes(group = interaction(scenario, type)), width = 0.75, position = position_dodge(0.85), 
+               color = "grey25", alpha = 0, outlier.alpha = 0, size = 0.4, show.legend = F) + 
+  facet_grid(~ roaming) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.5)) +
+  scale_color_manual(values = c("#d48d09", "#580080", "#8a8a8a"), name = "Transmission:") + 
+  scale_shape_manual(values = c(19, 17, 15), name = "Transmission:") + 
+  guides(colour = guide_legend(override.aes = list(alpha = 0.75, size = 4))) +
+  labs(x = "Landscape scenario", y = "\nProportion of\ninfections", 
+       tag = "f", title = NULL, subtitle = NULL) +
+  theme(axis.text.x = element_text(size = 11, angle = 33, hjust = 1, vjust = 1),
+        strip.text = element_blank(),
+        strip.background = element_blank())
+ 
+((fig_s10 <- fig_s10a + fig_s10b + fig_s10c + fig_s10d + fig_s10e + fig_s10f) *
+    theme(plot.margin = margin(1, 1, 1, 1),
+          legend.title = element_text(size = 12, face = "plain")) +
+  plot_layout(ncol = 1, height = c(1, 0.99, 0.99, 0.99, 0.99, 1)))
+
+## final panel
+if (save == T) { ggsave("./plots/final/FigS10_multi_raw.png", width = 11, height = 16, dpi = 350) }
+```
+
+***
+
+# Version info
+
+```{r version}
+version
+sessionInfo()
+```
+
+

@@ -1,0 +1,217 @@
+---
+title: "SwiFCoIBMove: Create input landscapes"
+author: "Cédric Scherer"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output: 
+  html_document:
+    theme: paper
+    #highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    link-citations: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Preparation
+
+## Setup
+
+```{r setup}
+## libraries
+library(tidyverse)        ## data wrangling
+library(NLMR)             ## simulate neutral landscape models
+library(landscapetools)   ## modify neural landscape models
+library(viridis)          ## make everything green again
+library(landscapemetrics) ## tidy FRAGSTATS
+library(raster)           ## GIS stuff
+
+## ggplot theme
+source("./R/ggtheme_grey.R")
+```
+
+```{r prep}
+## number of landscapes per setup
+n <- 200
+
+## landscape extent
+n_col <- 25
+n_row <- 50
+
+## seed
+s <- 2019
+
+## save .txt files for import?
+save <- FALSE
+```
+
+# Neutral Landscapes
+
+## Random
+
+```{r random}
+set.seed(s)
+random <- list()
+
+for (i in 1:n) {
+  rand <- NLMR::nlm_random(ncol = n_col, nrow = n_row) %>% 
+    landscapetools::util_classify(weighting = rep(0.1, 10))
+  random[i] <- rand
+  if (save == T) { write(rand@data@values, file = paste0("./model/nlms/rand_", i, ".txt"), sep = " ") }
+}
+```
+
+## Small random clusters (p = 0.01)
+
+```{r src}
+set.seed(s)
+patch_small <- list()
+
+for (i in 1:n) {
+  patch_s <- NLMR::nlm_randomcluster(ncol = n_col, nrow = n_row, p = 0.1, ai = rep(0.1, 10)) %>% 
+    landscapetools::util_classify(weighting = c(0.25, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.1, 0.25))
+  patch_small[i] <- patch_s
+  if (save == T) { write(patch_s@data@values, file = paste0("./model/nlms/patch_s_", i, ".txt"), sep = " ") }
+}
+```
+
+## Large random clusters (p = 0.05)
+
+```{r lrc}
+set.seed(s)
+patch_large <- list()
+
+for (i in 1:n) {
+  patch_l <- NLMR::nlm_randomcluster(ncol = n_col, nrow = n_row, p = 0.5, ai = rep(0.1, 10)) %>% 
+    landscapetools::util_classify(weighting = c(0.25, 0.1, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.1, 0.25))
+  patch_large[i] <- patch_l
+  if (save == T) { write(patch_l@data@values, file = paste0("./model/nlms/patch_l_", i, ".txt"), sep = " ") }
+}
+```
+
+
+# Plots
+
+```{r plots, fig.width = 10, fig.heigth = 5.3}
+hom <- raster(matrix(rep(4.5, (n_col * n_row)), n_row, n_col))
+
+nlms <- list(" a) Homogeneous"     = hom, 
+             " b) Large clusters"  = patch_large[[4]],
+             " c) Small clusters"  = patch_small[[5]], 
+             " d) Random"          = random[[5]])
+
+p_nlms <- util_facetplot(nlms, nrow = 1) +
+  scale_fill_viridis(breaks = c(0, 4.5, 9), name = "Quality:", direction = -1) +
+  guides(fill = guide_colorbar()) + 
+  theme_custom() + 
+  theme(axis.ticks = element_blank(), 
+        axis.text = element_blank(),
+        strip.text = element_text(hjust = 0),
+        panel.border = element_rect(color = "white"),
+        strip.background = element_blank(),
+        legend.title = element_text(face = "plain", size = 13))
+
+if (save == T) { ggsave("./plots/nlms/nlms_facet.png", width = 10, height = 5.3, dpi = 750) }
+
+
+p_nlms_magma <- p_nlms + 
+   scale_fill_viridis(option = "magma", breaks = c(0, 4.5, 9), name = "Quality:", 
+                      direction = -1, begin = 0.15, end = 0.95)
+
+if (save == T) { ggsave("./plots/nlms/nlms_facet_magma.png", width = 10, height = 5.3, dpi = 750) }
+
+
+(p_nlms_grey <- p_nlms + 
+  scale_fill_gradient(low = "grey97", high = "grey20", 
+                      breaks = c(0, 4.5, 9), name = "Quality:"))
+
+if (save == T) { ggsave("./plots/nlms/nlms_facet_grey_fig1.png", width = 10, height = 5.3, dpi = 750) }
+```
+
+Afterwards, run simulations using the "SwiFCoIBM-move.nlogo" file in the model folder and run the BehaviourSpace experiments. Afterwards, continue with script 2.
+
+
+# Metrics of landscape complexity
+
+```{r landscapemetric, fig.width = 11, fig.heigth = 5}
+## metrics to be calculate
+metrics <- c(
+  "lsm_l_ai",       ## aggregation index (aggregation metric)
+  "lsm_l_ed",       ## edge density (area and edge metric)
+  "lsm_l_frac_cv",  ## coefficient of variation fractal dimension index (shape metric)
+  "lsm_l_sidi"      ## Simpson's diversity index (diversity metric)
+)
+
+## aggregation index
+metrics_l <- patch_large %>% 
+  map_dfr(~ calculate_lsm(., what = metrics)) %>% 
+  mutate(scenario = "Large clusters")
+
+metrics_s <- patch_small %>% 
+  map_dfr(~ calculate_lsm(., what = metrics)) %>% 
+  mutate(scenario = "Small clusters")
+
+metrics_r <- random %>% 
+  map_dfr(~ calculate_lsm(., what = metrics)) %>% 
+  mutate(scenario = "Random")
+
+metrics_nlm <- metrics_l %>% 
+  bind_rows(metrics_s) %>% 
+  bind_rows(metrics_r) %>% 
+  mutate(
+    scenario = factor(scenario, 
+                 levels = c("Large clusters", "Small clusters", "Random")),
+    metric = case_when(
+      metric == "ai" ~ "Aggregation index\n(aggregation metric)",
+      metric == "ed" ~ "Edge density\n(area and edge metric)",
+      metric == "frac_cv" ~ "Fractal dimension index\n(shape metric)",
+      metric == "sidi" ~ "Simpson's diversity index\n(diversity metric)")
+  )
+
+## plot
+metrics_nlm %>% 
+  group_by(metric, scenario) %>%
+  summarise(
+    avg = mean(value, na.rm = T),
+    sd = sd(value, na.rm = T),
+    iqr = 1.5 * IQR(value, na.rm = T)
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(scenario, avg, color = scenario, fill = scenario)) +
+    geom_boxplot(aes(middle = avg - sd, lower = avg - sd, upper = avg + sd,
+                     ymin = avg - iqr, ymax = avg + iqr), stat = "identity", width = 0.6) + 
+    geom_segment(aes(x = as.numeric(scenario) - 0.5, xend = as.numeric(scenario) + 0.5, 
+                     y = avg, yend = avg, alpha = c(rep(1, 11), 0)), color = "white", size = 0.75) + 
+    geom_jitter(data = metrics_nlm, aes(scenario, value), 
+                color = "grey40", alpha = 0.3, width = 0.1, size = 0.5) +
+    facet_wrap(~ metric, nrow = 1, scales = "free_y") +
+    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.65, direction = -1, name = "") +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.65, direction = -1, name = "") +
+    scale_alpha_continuous(guide = F) +
+    labs(x = "Landscape scenario", y = "Value") +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14),
+          strip.text = element_text(size = 12.5),
+          legend.position = "bottom")
+
+if (save == T) { ggsave("./plots/final/FigS6_nlm_metrics.png", width = 11, height = 5, dpi = 750) }
+```
+
+
+***
+
+# Version info
+
+```{r version}
+version
+sessionInfo()
+```
+

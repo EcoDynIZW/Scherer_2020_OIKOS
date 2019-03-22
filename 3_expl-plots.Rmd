@@ -1,0 +1,1435 @@
+---
+title: "SwiFCoIBMove: Collection of explorative plots"
+author: "Cedric Scherer"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output: 
+  html_document:
+    theme: paper
+    #highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    link-citations: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r knitr-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Preparation
+
+## Setup
+
+```{r setup}
+## libraries
+library(tidyverse)     ## data wrangling
+library(magrittr)      ## ceci n'est pas une pipe
+library(glue)          ## glue strings together
+library(patchwork)     ## glue ggplots together
+library(viridis)       ## viridis color palettes
+library(nord)          ## northern-themed color palettes
+library(EnvStats)      ## add sample size to ggplots
+
+## ggplot theme
+source("./R/ggtheme_grey.R")
+
+## enable sourcing of .Rmd files
+source("./R/source-rmd.R")
+```
+
+## Data
+
+```{r data}
+filedate <- "2019-03-05"
+
+## data
+destfile1 = glue::glue("./data/{filedate}_SwifCoIBMove_inf.Rds")
+destfile2 = glue::glue("./data/{filedate}_SwifCoIBMove_infmean.Rds")
+
+if (!file.exists(destfile1) | !file.exists(destfile2)) {
+  print("reading and cleaning raw data")
+  source_rmd("2_data.Rmd")
+} else if (exists("df_inf") && exists("df_infmean")) {
+  print("data available")
+} else {
+  print("loading data")
+  df_inf     <- readRDS(destfile1)
+  df_infmean <- readRDS(destfile2) 
+}
+```
+
+
+## Prepare data for plotting
+
+```{r data-preparation}
+## set clean labels for factors
+lab_roam <- c("Correlated random walk", "Habitat-dependent movement", "Competition-driven movement")
+lab_scen <- c("Homogeneous", "Large clusters", "Small clusters", "Random")
+
+df_inf_plots <- df_inf %>%
+  mutate(
+    roaming  = factor(roaming, labels = lab_roam),
+    scenario = factor(scenario, levels = c("hom", "patch_l", "patch_s", "rand"), labels = lab_scen),
+    week_ext = if_else(is.na(week_ext), 625, week_ext)
+  ) %>% 
+  ungroup()
+
+df_infmean_plots <- df_infmean %>%
+  mutate(
+    roaming  = factor(roaming, labels = lab_roam),
+    scenario = factor(scenario, levels = c("hom", "patch_l", "patch_s", "rand"), labels = lab_scen)
+  ) %>% 
+  group_by(roaming, scenario) %>% 
+  mutate(pers = if_else(duration_weeks > 520, 1, 0)) %>% 
+  ungroup()
+
+## create nested subsets with parameters needed
+df_inf_subsets <- df_inf_plots %>% 
+  dplyr::select(
+    run:scenario,  ## variables
+    ind_inf, ind_all,
+    duration_weeks, 
+    week, week_release, 
+    week_pathogen, week_ext
+  ) %>% 
+  group_by(cfr, scenario) %>%
+  nest()
+
+## labels for weeks and years
+labs_weeks <- tibble("week" = seq(0, 572, by = 52)) %>% 
+  mutate(
+    weeks      = ifelse(week %% 104 == 0, glue::glue("{week}"), ""),
+    weeks_year = ifelse(week %% 104 == 0, glue::glue("{week}\nyear {week/52}"), "")
+  ) %>% 
+  filter(week <= 572)
+
+weeks_year <- labs_weeks %>% pull(weeks_year)
+weeks_only <- labs_weeks %>% pull(weeks)
+```
+
+## Variables & Settings
+
+The majority of plots visualize results for a case fatality risk of 0.5 (1:1 chance to become either transient or lethally infected). 
+
+```{r plot-settings}
+## case fatality risk to visualize
+cfr_filter <- 0.5
+
+## scenario to visualize (i.e. Fig. 2 single and Fig. 3)
+scenario_filter <- "Small clusters"
+
+## save plots?
+save <- TRUE
+
+## save weekly plots for all scenarios? (takes quite long)
+save_all <- FALSE
+
+## quality of plots
+dpi <- 750
+```
+
+
+# Data details
+
+Number of runs and number of values/levels tested per variable:
+
+```{r data-details}
+## number of unique values
+df_infmean_plots %>% 
+  keep(is.factor) %>% 
+  map_int(n_distinct) 
+```
+
+Values/levels per variable:
+
+```{r}
+## unique values of each variable
+df_infmean_plots %>%
+  keep(is.factor) %>%
+  dplyr::select(-run) %>%
+  map(unique)
+```
+
+
+# Plots
+
+## P1: "Persistence Probability"
+
+Probability of disease persistence measured as ratio between runs lasting 10 years or longer and the number of repititions per combination (200).
+Several plots show persistence based on other levels (1 to 10 years) indicated by lighter colors of the bars.
+
+
+### Dataset P1
+
+```{r p1-data}
+df_p1 <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%
+  mutate(
+    pers_2 = if_else(duration_weeks > 2*52, 1, 0),
+    pers_5 = if_else(duration_weeks > 5*52, 1, 0)
+  )
+```
+
+### 10-year persistence
+
+Overall 3-panel figure showing differences for all movement types (a), all landscape types (b) and per movement type (c).
+Differences between means are indicated by letters, evaluated separately for each panel using one-way ANOVAs and Tukey HSD posthoc tests.
+
+```{r p1-panels-10, fig.width = 16.5, fig.height = 9}
+## per movement type
+v1_roam <- df_p1 %>% 
+  group_by(roaming) %>%
+  summarise(pers_mean = mean(pers)) %>%
+  mutate(group = as.factor("All landscape scenarios")) %>% 
+  ungroup() %>% 
+    ggplot(aes(x = (as.numeric(roaming)), y = pers_mean, fill = roaming)) +   
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 0.4)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_manual(values = c("grey75", "grey50", "grey25"), name = "Movement strategy") + 
+    labs(x = "Movement strategy", y = "Probability of persistence", tag = "a  ")
+
+## per landscape scenario
+v1_scen <- df_p1 %>% 
+  group_by(scenario) %>%
+  summarise(pers_mean = mean(pers)) %>% 
+  mutate(group = as.factor("All movement types")) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 0.4)) +
+    theme(legend.position = "none",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    labs(x = "Landscape structure", y = "Probability of persistence", tag = "b  ")
+
+v1_detail <- df_p1 %>% 
+  group_by(roaming, scenario) %>%
+  summarise(pers_mean = mean(pers)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) + 
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 0.4)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = "Landscape scenario") +
+    labs(x = "Landscape structure", y = "Probability of persistence", tag = "c  ")
+
+plot_spacer() + v1_roam + v1_scen + v1_detail + plot_layout(nrow = 2, heights = c(2, 3), widths = c(1, 3))
+
+if (save == T) { ggsave("./plots/explorative/P1_PersBar_all_10.png", width = 16.5, height = 9, dpi = dpi) }
+```
+
+```{r p1-single-10, fig.width = 10, fig.height = 6, include = FALSE}
+##### plot not included in html #####
+
+## single plot
+if (save == TRUE) {
+  df_p1 %>%  
+    group_by(roaming, scenario) %>%
+    summarise(pers_mean = mean(pers)) %>% 
+    ungroup() %>% 
+    ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+      geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+      facet_grid( ~ roaming) +
+      expand_limits(y = c(0, 0.4)) +
+      theme(legend.position = "bottom",
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank()) +
+      scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+      labs(x = "Landscape structure", y = "Probability of persistence")
+
+  ggsave("./plots/explorative/P1_PersBar_single_10.png", width = 10, height = 6, dpi = dpi) 
+}
+```
+
+Boxplots displaying mean (hline), var (box) and sd (whiskers).  
+
+**Note:** no additional information since var and sd the larger the closer the mean to 0.5.
+
+```{r p1-boxplot-10, fig.width = 10, fig.height = 6}
+df_p1 %>%  
+  group_by(roaming, scenario) %>%
+  summarise(
+    pers_mean = mean(pers),
+    sd = sd(pers),
+    iqr = 1.5 * IQR(pers)
+  ) %>% 
+  mutate(
+    sd_lwr = ifelse(pers_mean - sd < 0, 0, pers_mean - sd),
+    iqr_lwr = ifelse(pers_mean - iqr < 0, 0, pers_mean - iqr)
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario, color = scenario)) +   
+    geom_boxplot(aes(middle = pers_mean, lower = iqr_lwr, upper = pers_mean + sd,
+                     ymin = sd_lwr, ymax = pers_mean + iqr, width = 0.7), stat = "identity") + 
+    geom_segment(aes(x = as.numeric(scenario) - 0.5, xend = as.numeric(scenario) + 0.5, 
+                     y = pers_mean, yend = pers_mean), color = "white", size = 1) + 
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    labs(x = "Landscape structure", y = "Probability of persistence")
+
+if (save == T) { ggsave("./plots/explorative/P1_PersBox_single_10.png", width = 10, height = 6, dpi = dpi) }
+```
+
+### 2-, 5-, and 10-year persistence
+
+Peristence estimated after 2 (light), 5 (medium) and 10 (dark) years since the pathogen was released. 
+
+```{r p1-panels-all, fig.width = 16.5, fig.height = 9}
+## per movement type
+v2_roam <- df_p1 %>% 
+  group_by(roaming) %>%
+  summarise(
+    pers_mean = mean(pers),
+    pers_2_mean = mean(pers_2),
+    pers_5_mean = mean(pers_5)
+  ) %>% 
+  mutate(group = as.factor("All landscape scenarios")) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = (as.numeric(roaming)), y = pers_mean, fill = roaming)) +   
+    geom_bar(aes(y = pers_2_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+    geom_bar(aes(y = pers_5_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.5) + 
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ group) + 
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_manual(values = c("grey75", "grey50", "grey25"), name = "Movement strategy") + 
+    labs(x = "Movement strategy", y = "Probability of persistence", tag = "a  ")
+
+## per landscape scenario
+v2_scen <- df_p1 %>% 
+  group_by(scenario) %>%
+  summarise(
+    pers_mean = mean(pers),
+    pers_2_mean = mean(pers_2),
+    pers_5_mean = mean(pers_5)
+  ) %>% 
+  mutate(group = as.factor("All movement types")) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+    geom_bar(aes(y = pers_2_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+    geom_bar(aes(y = pers_5_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.5) + 
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    expand_limits(y = c(0, 1)) +
+    facet_wrap(~ group) +
+    theme(legend.position = "none",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    labs(x = "Landscape structure", y = "Probability of persistence", tag = "b  ")
+
+## per movement type and landscape scenario
+v2_detail <- df_p1 %>% 
+  group_by(roaming, scenario) %>%
+  summarise(
+    pers_mean = mean(pers),
+    pers_2_mean = mean(pers_2),
+    pers_5_mean = mean(pers_5)
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) + 
+    geom_bar(aes(y = pers_2_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+    geom_bar(aes(y = pers_5_mean), stat = "identity", position = "dodge", width = 0.7, alpha = 0.5) +   
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = "Landscape scenario") +
+    labs(x = "Landscape structure", y = "Probability of persistence", tag = "c  ") 
+
+plot_spacer() + v2_roam + v2_scen + v2_detail + plot_layout(nrow = 2, heights = c(2, 3), widths = c(1, 3))
+
+if (save == T) { ggsave("./plots/explorative/P1_PersBar_all_2+5+10.png", width = 16.5, height = 9, dpi = dpi) }
+```
+
+```{r p1-single-2+5+10, fig.width = 10, fig.height = 6, include = FALSE}
+## plot not included in html
+
+## single plot
+if (save == TRUE) { 
+  df_p1 %>% 
+    group_by(roaming, scenario) %>%
+    summarise(
+      pers_mean   = mean(pers),
+      pers_mean_2 = mean(pers_2),
+      pers_mean_5 = mean(pers_5)
+    ) %>% 
+    ungroup() %>% 
+    ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+      geom_bar(aes(y = pers_mean_2), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+      geom_bar(aes(y = pers_mean_5), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+      geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+      facet_wrap(~ roaming) +
+      expand_limits(y = c(0, 1)) +
+      theme(legend.position = "bottom",
+            axis.text.x = element_blank(),
+            axis.ticks.x = element_blank()) +
+      scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+      labs(x = "Landscape structure", y = "Probability of persistence")
+
+  ggsave("./plots/explorative/P1_PersBar_single_2+5+10.png", width = 10, height = 6, dpi = dpi) 
+}
+```
+
+### Persistence for each year
+
+Persistence evaluated after each year since the pathogen was released. The darker the color, the later (lightest color = 1 year, darkest color = 10 years).
+
+```{r p1-single-all-yrs, fig.width = 10, fig.height = 6}
+df_p1 %>% 
+  mutate(
+    pers_1 = if_else(duration_weeks > 52, 1, 0),
+    pers_3 = if_else(duration_weeks > 3*52, 1, 0),
+    pers_4 = if_else(duration_weeks > 4*52, 1, 0),
+    pers_6 = if_else(duration_weeks > 6*52, 1, 0),
+    pers_7 = if_else(duration_weeks > 7*52, 1, 0),
+    pers_8 = if_else(duration_weeks > 8*52, 1, 0),
+    pers_9 = if_else(duration_weeks > 7*52, 1, 0)
+  ) %>% 
+  group_by(roaming, scenario) %>%
+  summarise(
+    pers_mean = mean(pers),
+    pers_mean_1 = mean(pers_1),
+    pers_mean_2 = mean(pers_2),
+    pers_mean_3 = mean(pers_3),
+    pers_mean_4 = mean(pers_4),
+    pers_mean_5 = mean(pers_5),
+    pers_mean_6 = mean(pers_6),
+    pers_mean_7 = mean(pers_7),
+    pers_mean_8 = mean(pers_8),
+    pers_mean_9 = mean(pers_9)
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+    geom_bar(aes(y = pers_mean_1), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_2), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_3), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_4), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_5), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_6), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_7), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_8), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(aes(y = pers_mean_9), stat = "identity", position = "dodge", width = 0.7, alpha = 0.1) + 
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 1)) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    labs(x = "Landscape structure", y = "Probability of persistence")
+
+if (save == T) { ggsave("./plots/explorative/P1_PersBar_single_all.png", width = 10, height = 6, dpi = dpi) }
+```
+
+### Facet of all case fatality risks
+
+Peristence estimated at the 2-, 5- and 10-year level for all tested case fatality risks (cfr = {0.1, 0.3, 0.5, 0.7, 0.9}).
+
+```{r p1-facet-cf, fig.width = 10, fig.height = 12}
+df_infmean_plots %>% 
+  mutate(
+    pers_2 = if_else(duration_weeks > 2*52, 1, 0),
+    pers_5 = if_else(duration_weeks > 5*52, 1, 0)
+  ) %>% 
+  group_by(roaming, scenario, cfr) %>%
+  summarise(
+    pers_mean = mean(pers),
+    pers_mean_2 = mean(pers_2),
+    pers_mean_5 = mean(pers_5)
+  ) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, y = pers_mean, fill = scenario)) +   
+    geom_bar(aes(y = pers_mean_2), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) +   
+    geom_bar(aes(y = pers_mean_5), stat = "identity", position = "dodge", width = 0.7, alpha = 0.3) + 
+    geom_bar(stat = "identity", position = "dodge", width = 0.7) + 
+    facet_grid(cfr ~ roaming) +
+    expand_limits(y = c(0, 0.5)) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          plot.tag = element_text(angle = 270, size = 15, face = "plain"),
+          plot.tag.position = "right") +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = NULL) +
+    labs(x = "Landscape structure", y = "Probability of persistence", 
+         tag = "Case fatality risk               \n")
+
+if (save == T) { ggsave("./plots/explorative/P1_PersBar_facet_cf.png", width = 10, height = 12, dpi = 500) }
+```
+
+
+## P2: "Outbreak Duration""
+
+- number of simulation runs per week of extinction + those runs that persisted for 10 years or longer (comp. P1)
+
+```{r p2-data}
+df_p2 <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%
+  mutate(duration_quarter = if_else(duration_quarter > 40, 50, floor(duration_quarter)))
+```
+
+```{r p2-counts, fig.width = 12, fig.height = 7.5, include = FALSE}
+##### plot not included in html #####
+
+## counts
+if (save == TRUE) { 
+  
+  year_inf_max <- df_infmean_plots %>% 
+  group_by(roaming, scenario) %>% 
+  filter(week_inf_max > 0) %>% 
+  summarize(
+    avg = median(week_inf_max) / 52,
+    min = min(week_inf_max) / 52,
+    max = max(week_inf_max) / 52,
+    duration_quarter = 6,
+    y = 70
+  )
+  
+  ggplot(filter(df_p2, duration_quarter != 50), aes(duration_quarter / 4)) +   
+    geom_rect(data = year_inf_max, aes(xmin = min, xmax = max, ymin = -Inf, ymax = Inf), fill = "grey30", alpha = 0.1) + 
+    geom_point(data = year_inf_max, aes(avg, y), color = "grey30") + 
+    geom_errorbarh(data = year_inf_max, aes(y = y, xmin = min, xmax = max), height = 0, color = "grey30") +
+    geom_bar(aes(group = duration_quarter, fill = scenario), stat = "count", width = 0.2) +
+    geom_bar(data = filter(df_p2, duration_quarter == 50), 
+             aes(group = duration_quarter, fill = scenario), stat = "count", width = 0.2) +
+    geom_vline(xintercept = 11.25, linetype = "dotted") +
+    facet_grid(scenario ~ roaming) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    scale_x_continuous(breaks = seq(0, 12.5, by = 2.5), 
+                       labels = c(0, 2.5, 5, 7.5, 10, "more than\n10 years")) +
+    scale_y_continuous(breaks = seq(0, 75, by = 25)) + 
+    expand_limits(x = c(0, 13), y = c(0, 85)) +
+    theme(legend.position = "bottom",
+          strip.text.y = element_blank(),
+          panel.grid.major.y = element_line(color = "grey90", size = 0.4)) +
+    labs(x = "Outbreak duration (time to pathogen extinction)", y = "Count")
+  
+  ggsave("./plots/explorative/P2_DurBar_quarter_count.png", width = 12, height = 7.5, dpi = dpi) 
+}
+```
+
+```{r p2-proportions, fig.width = 12, fig.height = 7.5}
+## proportion
+n <- df_infmean_plots %>%   
+  group_by(roaming, cfr, scenario) %>%
+  count() %>% 
+  ungroup() %>% 
+  summarise(n = unique(n)) %>% 
+  pull()
+
+year_inf_max <- df_infmean_plots %>% 
+  group_by(roaming, scenario) %>% 
+  filter(week_inf_max > 0) %>% 
+  summarize(
+    avg = median(week_inf_max) / 52,
+    min = min(week_inf_max) / 52,
+    max = max(week_inf_max) / 52,
+    duration_quarter = 6,
+    prop = 0.385
+  )
+
+df_p2_prop <- df_p2 %>% 
+  group_by(roaming, cfr, scenario, duration_quarter) %>% 
+  summarize(prop = n() / n)
+
+ggplot(filter(df_p2_prop, duration_quarter != 50), aes(duration_quarter / 4, prop)) + 
+  geom_rect(data = year_inf_max, aes(xmin = min, xmax = max, ymin = -Inf, ymax = Inf), fill = "grey30", alpha = 0.1) + 
+  geom_point(data = year_inf_max, aes(avg, prop), color = "grey30") + 
+  geom_errorbarh(data = year_inf_max, aes(xmin = min, xmax = max), height = 0, color = "grey30") +
+  geom_bar(aes(group = duration_quarter, fill = scenario), stat = "identity", width = 0.2) +
+  geom_bar(data = filter(df_p2_prop, duration_quarter == 50), 
+           aes(group = duration_quarter, fill = scenario), stat = "identity", width = 0.2) +
+  geom_vline(xintercept = 11.25, linetype = "dotted") +
+  facet_grid(scenario ~ roaming) +
+  scale_fill_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+  scale_x_continuous(breaks = seq(0, 12.5, by = 2.5),
+                     labels = c(0, 2.5, 5, 7.5, 10, "more than\n10 years")) +
+  scale_y_continuous(breaks = seq(0, 0.4, 0.2)) +
+  expand_limits(x = c(0, 13), y = c(0, 0.41)) +
+  theme(legend.position = "bottom",
+        strip.text.y = element_blank(),
+        panel.grid.major.y = element_line(color = "grey90", size = 0.3),
+        panel.grid.minor.y = element_line(color = "grey90", size = 0.3)) +
+  labs(x = "Outbreak duration (time to pathogen extinction)", y = "Proportion of simulation runs")
+
+if (save == T) { ggsave("./plots/explorative/P2_DurBar_quarter_prop.png", width = 12, height = 7.5, dpi = dpi) }
+```
+
+```{r p2-proportions-single}
+df_p2_prop_single <- df_p2_prop %>% 
+  filter(
+    scenario == scenario_filter,
+    roaming == "Habitat-dependent movement"
+  ) %>% 
+  mutate(duration_quarter = ifelse(duration_quarter == 50, 48, duration_quarter))
+
+ggplot(filter(df_p2_prop_single, duration_quarter != 48), aes(duration_quarter / 4, prop)) + 
+  geom_bar(aes(group = duration_quarter), fill = "grey20", stat = "identity", width = 0.2) +
+  geom_bar(data = filter(df_p2_prop_single, duration_quarter == 48), 
+           aes(group = duration_quarter), fill = "tan1", stat = "identity", width = 0.2) +
+  geom_vline(xintercept = 11, linetype = "dotted", size = 0.5) +
+  geom_vline(xintercept = 2.125, linetype = "dotted", color = "grey40", size = 0.5) +
+  geom_vline(xintercept = 5.125, linetype = "dotted", color = "grey40", size = 0.5) +
+  scale_x_continuous(breaks = c(0, 2, 5, 10, 12), 
+                     labels = c(0, 2, 5, 10, ">10")) +
+  expand_limits(x = c(0, 12.25), y = c(0, 0.45)) +
+  theme(legend.position = "none") +
+  labs(x = "Outbreak duration (years)", y = "Proportion of runs")
+
+if (save == T) { ggsave("./plots/explorative/P2_DurBar_quarter_prop_single.png", width = 3.5, height = 2.5, dpi = dpi) }
+```
+
+
+## P3: "Number of Infected Individuals over Time"
+
+Counts or proportions of infected individuals over time, either scaled by the year of outbreak (Week of the year, week 0 = 1st week of year in that the pathogen was released) or the week of outbreak (week since outbreak, week 0 = week of pathogen release). Each simulation run is visualized depending on the performance: in grey, runs that persisted for 10 years or longer, in orange runs in that the pathogen got extinct within 10 years. Extinction events are additionally marked by the rug on the x-axis. The black line indicates the mean value.
+
+### Week of the year
+
+* week 0 = 1st week of year in that the pathogen was released
+
+```{r p3-week-year, fig.width = 15, fig.height = 4, include = FALSE}
+##### plot not included in html #####
+
+## number of infected indviduals over time - example based on `scen`
+if (save == TRUE) { 
+  df_p3 <- df_inf_plots %>% 
+    filter(
+      scenario == scenario_filter,
+      cfr == cfr_filter
+    ) %>% 
+    mutate(
+      pers = if_else(duration_weeks > 520, 1, 0),
+      pers = factor(pers),
+      week = week - 52,  ## 1st year as burn-in
+      week_ext = if_else(week == week_ext - 52, week_ext - 52, NA_real_)
+    ) %>% 
+    group_by(roaming, week) %>% 
+    mutate(mean_inf = mean(ind_inf))
+  
+  ggplot(df_p3) +   
+    geom_line(aes(week / 52, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+    geom_line(data = df_p3, aes(week / 52, mean_inf), color = "black", size = 0.25) +
+    geom_rug(data = filter(df_p3, pers == 0), aes(week_ext / 52), sides = "b", alpha = 0.25) +
+    scale_x_continuous(breaks = 0:10, limits = c(0, 10)) + 
+    scale_y_continuous(breaks = seq(0, 7500, by = 2500)) +
+    scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+    facet_wrap(~ roaming, nrow = 1) +
+    expand_limits(y = c(0, 7500)) +
+    theme(axis.text.x = element_text(size = 11)) +
+    labs(x = "Year since pathogen release", y = "Number of infected individuals", 
+         caption = glue("scenario = {scenario_filter}"))
+  
+  ggsave("./plots/explorative/P3_WeekYear_src.png", width = 15, height = 4, dpi = dpi) 
+}
+```
+
+```{r p3-week-year-prop, fig.width = 15, fig.height = 4, include = FALSE}
+##### plot not included in html #####
+
+## proportion of infected indviduals over time - example based on `scen`
+if (save == T) { 
+  df_p3_prop <- df_inf_plots %>% 
+    filter(
+      scenario == scenario_filter, 
+      cfr == cfr_filter
+    ) %>% 
+    mutate(
+      pers = if_else(duration_weeks > 520, 1, 0),
+      pers = factor(pers),
+      week = week - 52,
+      week_ext = if_else(week == week_ext - 52, week_ext - 52, NA_real_)
+    ) %>% 
+    group_by(roaming, week) %>% 
+    mutate(mean_ratio = mean(ind_inf) / mean(ind_all)) %>% 
+    group_by(run, week) %>% 
+    mutate(ratio = ind_inf / ind_all)
+  
+  ggplot(df_p3_prop) +  
+    geom_line(data = filter(df_p3_prop, pers == 0), aes(week / 52, ind_inf, group = run, 
+              color = "0"), size = 0.3, alpha = 0.4) +
+    geom_line(data = filter(df_p3_prop, pers == 1), aes(week / 52, ind_inf, group = run, 
+              color = "1"), size = 0.3, alpha = 0.4) +
+    #geom_line(aes(week / 52, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.6) +
+    geom_line(aes(week / 52, mean_ratio), color = "black", size = 0.25) +
+    geom_rug(data = filter(df_p3_prop, pers == 0), aes(week_ext / 52), sides = "b", alpha = 0.25) +
+    scale_x_continuous(breaks = 0:10, limits = c(0, 10)) + 
+    scale_color_manual(values = c("0" = "grey40", "1" = "tan1"), guide = F) +
+  facet_wrap(~ roaming, nrow = 1) +
+    theme(axis.text.x = element_text(size = 11)) +
+    labs(x = "Years since pathogen release", y = "Proportion of infected individuals", 
+         caption = glue("scenario = {scenario_filter}"))
+  
+  ggsave("./plots/explorative/P3_WeekYear_src_rel.png", width = 15, height = 4, dpi = dpi) 
+}
+```
+
+```{r p3-week-year-prop-facet, fig.width = 15, fig.height = 11}
+## proportion of infected indviduals over time - all landscape scenarios as facet
+df_p3_prop <- df_inf_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(
+    pers = if_else(duration_weeks > 520, 1, 0),
+    pers = factor(pers),
+    week = week - 52,
+    week_ext = if_else(week == week_ext - 52, week_ext - 52, NA_real_)
+  ) %>% 
+  group_by(scenario, roaming, week) %>% 
+  mutate(mean_ratio = mean(ind_inf) / mean(ind_all)) %>% 
+  group_by(run, week) %>% 
+  mutate(ratio = ind_inf / ind_all)
+
+ggplot(df_p3_prop) +   
+  geom_line(aes(week / 52, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+  geom_line(aes(week / 52, mean_ratio), color = "black", size = 0.25) +
+  geom_rug(data = filter(df_p3_prop, pers == 0), aes(week_ext / 52), sides = "b", alpha = 0.25) +
+  scale_x_continuous(breaks = 0:10, limits = c(0, 10)) + 
+  scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+  facet_grid(scenario ~ roaming) +
+  theme(axis.text.x = element_text(size = 11)) +
+  labs(x = "Year since pathogen release", y = "Proportion of infected individuals")
+
+if (save == T) { ggsave("./plots/explorative/P3_WeekYear_facet_rel.png", width = 15, height = 11, dpi = dpi) }
+```
+
+```{r p3-all-setups-week-year, include = FALSE}
+##### plot not included in html #####
+
+## relative number of infected indviduals over time - all landscape scenarios as single plots
+if (save_all == TRUE & save == TRUE) {
+  p3 <- df_inf_subsets %>% 
+    dplyr::select(data) %>%
+    unlist(recursive = FALSE) %>% 
+    map(. %>% 
+          mutate(
+            pers = if_else(duration_weeks > 520, 1, 0),
+            pers = factor(pers),
+            week = week - 52,  ## 1st year as burn-in
+            week_ext = if_else(week == week_ext - 52, week_ext - 52, NA_real_)
+          ) %>%
+          group_by(roaming, week) %>% 
+          mutate(mean_ratio = mean(ind_inf) / mean(ind_all)) %>% 
+          group_by(run, week) %>% 
+          mutate(ratio = ind_inf / ind_all))
+ 
+  walk(seq_along(p3), function(x) 
+    ggsave(
+      paste0("./plots/explorative/P3_WeekYear/P3_WeekYear_rel_", as.character(pull(df_inf_subsets[x, 1])), "-",
+             as.character(pull(df_inf_subsets[x, 2])), ".png"),
+      width = 15, height = 4, dpi = dpi,
+      ggplot() +   
+        geom_line(aes(week / 52, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+        geom_line(aes(week / 52, mean_ratio), color = "black", size = 0.25) +
+        geom_rug(data = filter(p3[[x]], pers == 0), aes(week_ext / 52), sides = "b", alpha = 0.25) +
+        scale_x_continuous(breaks = 0:10, limits = c(0, 10)) + 
+        scale_y_continuous(breaks = seq(0, 0.4, by = 0.1), limits = c(0, 0.43)) + 
+        scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+        facet_wrap(~ roaming, nrow = 1) +
+        theme(axis.text.x = element_text(size = 11)) +
+        labs(x = "Year since pathogen release", y = "Proportion of infected individuals",
+             caption = (paste0("scenario = ", unlist(df_inf_subsets[x, 2]),
+                               " | Casefatality = ", unlist(df_inf_subsets[x, 1]))))))
+}
+```
+
+### Week since outbreak
+
+* week 0 = week of pathogen release
+
+```{r p3-week-outbreak, fig.width = 15, fig.height = 4, include = FALSE}
+##### plot not included in html #####
+
+## number of infected indviduals over time - example based on `scen`
+if (save == TRUE) { 
+  df_p3 <- df_inf_plots %>% 
+    filter(
+      scenario == scenario_filter, 
+      cfr == cfr_filter
+    ) %>% 
+    mutate(
+      pers = if_else(duration_weeks > 520, 1, 0),
+      pers = factor(pers)
+    ) %>% 
+    group_by(roaming, week_pathogen) %>% 
+    mutate(
+      meanInf = mean(ind_inf),
+      duration_weeks = if_else(duration_weeks == week_pathogen, duration_weeks, NA_real_)
+    ) %>% 
+    filter(week_pathogen <= 520)
+  
+  ggplot(df_p3) +   
+    geom_line(aes(week_pathogen, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+    geom_line(aes(week_pathogen, meanInf), color = "black", size = 0.25) +
+    geom_rug(data = filter(df_p3, pers == 0), aes(duration_weeks), sides = "b", alpha = 0.25) +
+    scale_x_continuous(breaks = seq(0, 572, by = 52), limits = c(0, 572), labels = weeks_only) + 
+    scale_y_continuous(breaks = seq(0, 7500, by = 2500)) +
+    scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+    facet_wrap(~ roaming, nrow = 1) +
+    expand_limits(y = c(0, 7500)) +
+    theme(axis.text.x = element_text(size = 11)) +
+    labs(x = "Weeks since pathogen release", y = "Number of infected individuals", 
+         caption = glue("scenario = {scenario_filter}"))
+  
+  ggsave("./plots/explorative/P3_WeekOutbreak_src.png", width = 15, height = 4, dpi = dpi) 
+}
+```
+
+```{r p3-week-outbreak-facet, fig.width = 15, fig.height = 11}
+## number of infected indviduals over time - all landscape scenarios as facet
+df_p3 <- df_inf_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(
+    pers = if_else(duration_weeks > 520, 1, 0),
+    pers = factor(pers)
+  ) %>% 
+  group_by(scenario, roaming, week_pathogen) %>% 
+  mutate(
+    meanInf = mean(ind_inf),
+    duration_weeks = if_else(duration_weeks == week_pathogen, duration_weeks, NA_real_)
+  )
+
+ggplot(df_p3) +   
+  geom_line(aes(week_pathogen, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+  geom_line(aes(week_pathogen, meanInf), color = "black", size = 0.25) +
+  geom_rug(data = filter(df_p3, pers == 0), aes(duration_weeks), sides = "b", alpha = 0.25) +
+  scale_x_continuous(breaks = seq(0, 572, by = 52), limits = c(0, 572), labels = weeks_year) + 
+  scale_y_continuous(breaks = seq(0, 7500, by = 2500)) +
+  scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+  facet_grid(scenario ~ roaming) +
+  theme(axis.text.x = element_text(size = 11)) +
+  labs(x = "Weeks since pathogen release", y = "Number of infected individuals")
+
+if (save == T) { ggsave("./plots/explorative/P3_WeekOutbreak_facet.png", width = 15, height = 11, dpi = dpi) }
+```
+
+```{r p3-all-setups-week-oubreak, include = FALSE}
+##### plot not included in html #####
+
+## relative number of infected indviduals over time - all landscape scenarios as single plots
+if (save_all == TRUE & save == TRUE) {  
+  p3 <- df_inf_subsets %>% 
+    dplyr::select(data) %>%
+    unlist(recursive = FALSE) %>% 
+    map(. %>% 
+          mutate(
+            pers = if_else(duration_weeks > 520, 1, 0),
+            pers = factor(pers)
+          ) %>%
+          group_by(roaming, week_pathogen) %>% 
+          mutate(
+            mean_ratio = mean(ind_inf) / mean(ind_all),
+            duration_weeks = if_else(duration_weeks == week_pathogen, duration_weeks, NA_real_)
+          ) %>% 
+          group_by(run, week) %>% 
+          mutate(ratio = ind_inf / ind_all))
+  
+  walk(seq_along(p3), function(x) 
+    ggsave(
+      paste0("./plots/explorative/P3_WeekOutbreak/P3_WeekOutbreak_rel_", as.character(pull(df_inf_subsets[x, 1])), "-",
+                  as.character(pull(df_inf_subsets[x, 2])), ".png"),
+      width = 15, height = 4, dpi = dpi,
+      ggplot() +   
+        geom_line(aes(week_pathogen, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+        geom_line(aes(week_pathogen, mean_ratio), color = "black", size = 0.25) +
+        geom_rug(data = filter(p3[[x]], pers == 0), aes(duration_weeks), sides = "b", alpha = 0.25) +
+        scale_x_continuous(breaks = seq(0, 572, by = 52), limits = c(0, 572), labels = weeks_year) + 
+        scale_y_continuous(breaks = seq(0, 0.4, by = 0.1), limits = c(0, 0.43)) + 
+        scale_color_manual(values = c("grey40", "tan1"), guide = F) +
+        expand_limits(y = c(0, 9000)) +
+        facet_wrap(~ roaming, nrow = 1) +
+        theme(axis.text.x = element_text(size = 11)) +
+        labs(x = "Weeks since pathogen release", y = "Proportion of infected individuals",
+             caption = (paste0("scenario = ", unlist(df_inf_subsets[x, 2]),
+                               " | Casefatality = ", unlist(df_inf_subsets[x, 1]))))))
+}
+```
+
+```{r p3-week-outbreak-single, fig.width = 3.7, fig.height = 2.5, include = FALSE}
+##### plot not included in html #####
+
+## number of infected indviduals over time - example based on `scen`
+if (save == TRUE) { 
+  df_p3_single <- df_p3 %>% 
+    filter(
+      scenario == scenario_filter,
+      roaming == "Habitat-dependent movement"
+    ) %>% 
+    mutate(pers = ifelse(pers == 1, "> 10 years", "\u2264 10 years")) %>% 
+    arrange(pers)
+  
+  ggplot(df_p3_single) +   
+    geom_line(aes(week_pathogen, ind_inf, group = run, color = pers), size = 0.3, alpha = 0.4) +
+    geom_line(aes(week_pathogen, meanInf), color = "black", size = 0.25) +
+    geom_rug(data = filter(df_p3_single, pers == "\u2264 10 years"), aes(duration_weeks), sides = "b", alpha = 0.4) +
+    scale_x_continuous(breaks = seq(0, 572, by = 52), limits = c(0, 572), labels = weeks_only) + 
+    scale_y_continuous(labels = scales::comma_format()) +
+    scale_color_manual(values = c("grey40", "tan1"), name = NULL) +
+    theme(legend.position = c(0.75, 0.85), 
+          legend.box = "horizontal",
+          legend.background = element_rect(fill = "transparent")) +
+    labs(x = "Weeks since pathogen release", y = "Infected individuals")
+  
+  ggsave("./plots/explorative/P3_WeekOutbreak_single_src_hdm.png", width = 3.7, height = 2.5, dpi = dpi) 
+}
+```
+
+
+## P4: "Number of Infected Individuals""
+
+### Overall
+
+- overall number of infected individuals
+- only runs that persisted for 10 years or longer
+
+```{r p4-overall, fig.width = 10, fig.height = 6}
+df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  #filter(duration_weeks > 520) %>% 
+  ggplot(aes(scenario, ind_inf, color = scenario)) + 
+    geom_boxplot() +
+    facet_wrap(~ roaming, nrow = 1) +
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    labs(x = "Landscape scenario", y = "Number of infected individuals")
+
+if (save == T) { ggsave("./plots/explorative/P4_InfBox.png", width = 10, height = 6, dpi = dpi) }
+```
+
+### Per "outbreak group"
+
+- number of infected individuals 
+  * overall OR 
+  * relative per timestep (infected individuals / outbreak duration)
+- grouping into three categories based on the following characteristics:
+  * **invasion failed** if not more than 20 cells got infected
+  * **invasion successful but less than 10 years** if more than 20 cells got infected but the disease did not last for 10 years or longer
+  * **persistence for more than10 years** if the disease did persist for 10 years or longer
+
+#### Boxplots
+
+```{r p4-outbreak-group, fig.width = 10, fig.height = 8}
+## overall
+df_p4 <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(
+    duration_group = case_when(
+      cell_infectious <= 20 ~ "invasion failed",
+      cell_infectious > 20 & duration_weeks < 261 ~ "invasion successful\nbut less than 5 years",
+      duration_weeks >= 261  ~ "persistence for more\nthan 5 years")
+  )
+
+df_p4 %>% 
+  ggplot(aes(scenario, ind_inf, color = scenario)) +
+    geom_boxplot() +
+    stat_n_text(family = "Lato") +
+    facet_grid(duration_group ~ roaming) +
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    labs(x = "Landscape scenario", y = "Number of infected individuals")
+
+if (save == T) { ggsave("./plots/explorative/P4_InfBox_byType_facet.png", width = 10, height = 8, dpi = dpi) }
+```
+
+```{r p4-outbreak-group-rel, fig.width = 10, fig.height = 8}
+## relative
+df_p4 %>% 
+  mutate(ind_inf_rel = ind_inf / duration_weeks) %>% 
+  ggplot(aes(scenario, ind_inf_rel, color = scenario)) +
+    geom_boxplot() +
+    stat_n_text(family = "Lato") +
+    scale_y_log10() +
+    facet_grid(duration_group ~ roaming) +
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    labs(x = "Landscape scenario", y = "Number of infected individuals per week")
+
+if (save == T) { ggsave("./plots/explorative/P4_InfBox_byType_facet_rel.png", width = 10, height = 8, dpi = dpi) }
+```
+
+#### Jitter + Median
+
+- number of infected individuals per run (points) and median per group (bar)
+
+```{r p4-outbreak-group-jitter, fig.width = 10, fig.height = 7, include = FALSE}
+##### plot not included in html #####
+
+## overall
+if (save == TRUE) { 
+  df_p4 %>% 
+    group_by(duration_group, roaming, scenario) %>% 
+    mutate(median_inf = median(ind_inf)) %>% 
+    ggplot(aes(scenario, ind_inf, color = duration_group)) +
+      geom_errorbar(aes(color = duration_group, ymin = median_inf, ymax = median_inf), 
+                    width = 0.7, size = 1) +
+      #geom_boxplot(aes(color = duration_group), position = position_dodge(0), 
+      #outlier.color = NA, coef = 0) +
+      geom_jitter(alpha = 0.2, width = 0.3) +
+      facet_wrap(~ roaming) +
+      scale_color_manual(values = c("#b1402e", "#D9AF6B", "#21101a"), name = NULL) +
+      theme(legend.position = "bottom",
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.95)) +
+      labs(x = "\nLandscape scenario", y = "Number of infected individuals")
+  
+  ggsave("./plots/explorative/P4_InfJit_byType.png", width = 10, height = 7, dpi = dpi) 
+}
+```
+
+```{r p4-outbreak-group-rel-jitter, fig.width = 10, fig.height = 7}
+## relative
+df_p4 %>% 
+  group_by(duration_group, roaming, scenario) %>% 
+  mutate(median_inf_rel = median(ind_inf / ind_all)) %>% 
+  ggplot(aes(scenario, ind_inf / ind_all, color = duration_group)) +
+    geom_errorbar(aes(color = duration_group, ymin = median_inf_rel, ymax = median_inf_rel), 
+                  width = 0.7, size = 1) +
+    geom_jitter(alpha = 0.2, width = 0.3) +
+    facet_wrap(~ roaming) +
+    scale_color_manual(values = c("#b1402e", "#D9AF6B", "#21101a"), name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.95)) +
+    labs(x = "\nLandscape scenario", y = "Number of infected individuals per week")
+
+if (save == T) { ggsave("./plots/explorative/P4_InfJit_byType_rel.png", width = 10, height = 7, dpi = dpi) }
+```
+
+### Per health status
+
+- absolute number of infected individuals 
+  * points: number of infected individuals per run 
+  * bar: median value per group
+- grouping into the three health status susceptible, infected, and immune (recovered)
+
+```{r p4-per-SIR, fig.width = 10, fig.height = 8.5}
+susc <- df_p4 %>% 
+  group_by(duration_group, roaming, scenario) %>% 
+  mutate(
+    median_ind = median(ind_susc),
+    ind        = ind_susc,
+    ID         = "susceptible"
+  )
+
+infe <- df_p4 %>% 
+  group_by(duration_group, roaming, scenario) %>% 
+  mutate(
+    median_ind = median(ind_inf),
+    ind        = ind_inf,
+    ID         = "infected"
+  )
+
+immu <- df_p4 %>% 
+  group_by(duration_group, roaming, scenario) %>% 
+  mutate(
+    median_ind = median(ind_immu),
+    ind        = ind_immu,
+    ID         = "immune"
+  )
+
+all_health <- rbind(susc, infe, immu)
+
+medians <- all_health %>% 
+  group_by(ID, duration_group, scenario, roaming) %>% 
+  summarise(median_ind = median(ind))
+
+ggplot(all_health, aes(scenario, ind, color = duration_group)) +
+  geom_jitter(alpha = 0.2, width = 0.2) +
+  geom_errorbar(data = medians, aes(y = NULL, color = duration_group, ymin = median_ind, ymax = median_ind), 
+                width = 0.7, size = 1, alpha = 0.5) +
+  facet_grid(fct_rev(ID) ~ roaming, scales = "free_y") +
+  scale_color_manual(values = c("#b1402e", "#D9AF6B", "#21101a"), name = NULL) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 0.95)) +
+  labs(x = "\nLandscape scenario", y = "Number of individuals")
+
+if (save == T) { ggsave("./plots/explorative/P4_InfJit_byStatus_facet.png", width = 10, height = 8.5, dpi = dpi)}
+```
+
+
+## P5: "Number of Ranging Males Initially Infected"
+
+- number of ranging males infected in the first time step
+- only runs that persisted for 10 years or longer
+
+```{r p5-ranging-males, fig.width = 10, fig.height = 6}
+df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%
+  filter(duration_weeks > 520) %>% 
+  ggplot(aes(scenario, count_init_roaming, color = scenario)) +
+    geom_boxplot() +
+    stat_n_text(family = "Lato") +
+    facet_wrap(~ roaming, nrow = 1) +
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "bottom",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank()) +
+    labs(x = "Landscape scenario", y = "Number of ranging individuals\ninitially infected")
+
+if (save == T) { ggsave("./plots/explorative/P5_RoamBox.png", width = 10, height = 6, dpi = dpi) }
+```
+
+### Per outbreak duration
+
+Number of ranging males initially infected versus outbreak duration.  
+Each boxplot contains the same number of observations (20 per boxplot).   
+The grey dashed line indicates the mean value per combination.
+
+**Note**: y-axes are scaled independently for each movement type.
+
+```{r p5-ranging-males-outbreak-duration, fig.width = 18, fig.height = 8}
+lab_roam_breaks <- c("Correlated\nrandom walk", "Habitat-dependent\nmovement", "Competition-driven\nmovement")
+
+df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%
+  mutate(roaming = factor(roaming, labels = lab_roam_breaks)) %>% 
+  group_by(roaming, scenario) %>% 
+  mutate(meanOR = mean(count_init_roaming)) %>% 
+  ggplot(aes(duration_weeks, count_init_roaming, color = scenario)) +
+    geom_hline(aes(yintercept = meanOR), color = "grey75", linetype = "twodash") +
+    geom_point(size = 2.5, color = "grey40", alpha = 0.15) +   
+    geom_boxplot(aes(group = cut_number(duration_weeks, 10)), #cut_interval(duration_weeks, 11)
+                 fill = "transparent", outlier.shape = NA, size = 0.8) +
+    facet_grid(roaming ~ scenario, scale = "free_y") +
+    scale_x_continuous(breaks = seq(0, 572, by = 104), limits = c(0, 572)) + 
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "none") +
+    labs(x = "Weeks since pathogen release", y = "Number of ranging individuals initially infected")
+
+if (save == T) { ggsave("./plots/explorative/P5_RoamBox_OutbreakDur.png", width = 18, height = 8, dpi = dpi) }
+```
+
+Adding linear fits to visualize trends in a better way. 
+
+**Note**: not all raw data is shown (comp. plot before)
+
+```{r p5-ranging-males-outbreak-duration-fit, fig.width = 10, fig.height = 8.2}
+df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>%
+  mutate(roaming = factor(roaming, labels = lab_roam_breaks)) %>% 
+  group_by(roaming, scenario) %>% 
+  mutate(meanOR = mean(count_init_roaming)) %>% 
+  ggplot(aes(duration_weeks, count_init_roaming, color = scenario)) +
+    geom_hline(aes(yintercept = meanOR), color = "grey20", linetype = "twodash") +
+    geom_point(size = 2.5, color = "grey40", alpha = 0.15) +   
+    geom_smooth(method = "lm", size = 1.25) +
+    facet_grid(roaming ~ scenario) +
+    scale_x_continuous(breaks = seq(0, 572, by = 52), limits = c(0, 572), labels = weeks_only) + 
+    coord_cartesian(ylim = c(0, 15)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.85, end = 0.15, name = NULL) +
+    theme(legend.position = "none") +
+    labs(x = "Weeks since pathogen release", y = "Number of ranging individuals\ninitially infected")
+
+if (save == T) { ggsave("./plots/explorative/P5_RoamBox_OutbreakDur_fit.png", width = 12, height = 8.2, dpi = dpi) }
+```
+
+There is no obvious pattern that high/low numbers of initially infected males leads to persistence or extinction. 
+In case of habitat-dependent movement, in some runs no ranging males got inititally infected in heterogeneous landscapes -> possibly too good habitat/conditions in the surrounding cells. This rarely the case when simulating competition-driven movement and never when individuals useperform a correlated random walk.
+
+
+## P6: "F_infectious over time"
+
+```{r p6-f-infectious-time}
+df_inf_plots %>% 
+  group_by(roaming, scenario, week_pathogen) %>% 
+  summarize(
+    F_mean = mean(F_infectious), 
+    upr = F_mean + sd(F_infectious),
+    lwr = F_mean - sd(F_infectious)
+    ) %>% 
+    mutate(
+      upr = ifelse(upr > 1, 1, upr), 
+      lwr = ifelse(lwr < 0, 0, lwr)
+   ) %>% 
+   ggplot(aes(x = week_pathogen, y = F_mean, group = roaming)) + 
+     geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "darkorange1", alpha = 0.4) +  
+     geom_line() + 
+     facet_grid(scenario ~ roaming) +
+     scale_x_continuous(breaks = seq(0, 572, by = 52), labels = weeks_only) + 
+     scale_y_continuous(breaks = scales::pretty_breaks(n = 3)) +
+     theme(axis.text.x = element_text(size = 10),
+           axis.text.y = element_text(size = 11)) +
+     labs(x = "Weeks since pathogen release", y = "F(infectious)")
+
+if (save == T) { ggsave("./plots/explorative/P7_Finfectious_time.png", width = 9.5, height = 7.5, dpi = dpi) }
+```
+
+```{r p6-f-infectious-time-zoom}
+df_inf_plots %>% 
+  filter(week_pathogen > 104) %>% 
+  group_by(roaming, scenario, week_pathogen) %>% 
+  summarize(
+    F_mean = mean(F_infectious), 
+    upr = F_mean + sd(F_infectious),
+    lwr = F_mean - sd(F_infectious)
+    ) %>% 
+    mutate(
+      upr = ifelse(upr > 1, 1, upr), 
+      lwr = ifelse(lwr < 0, 0, lwr)
+   ) %>% 
+   ggplot(aes(x = week_pathogen, y = F_mean, group = roaming)) + 
+     geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "darkorange1", alpha = 0.4) +  
+     geom_line() + 
+     facet_grid(scenario ~ roaming) +
+     scale_x_continuous(breaks = seq(0, 572, by = 52), labels = weeks_only) + 
+     scale_y_continuous(breaks = scales::pretty_breaks(n = 3)) +
+     theme(axis.text.x = element_text(size = 10),
+           axis.text.y = element_text(size = 11)) +
+     labs(x = "Weeks since pathogen release", y = "F(infectious)")
+
+if (save == T) { ggsave("./plots/explorative/P6_Finfectious_time_zoom.png", width = 9.5, height = 7.5, dpi = dpi) }
+```
+
+
+## P7: "Habitat quality"
+
+### Distribution per habitat quality classes
+
+```{r p7-quality-per-class, fig.width = 7.8, fig.height = 3.5}
+## patch data set
+df_inf_qual <- df_inf_plots %>% 
+  filter(
+    week_pathogen > 0,
+    week_pathogen < 520
+  ) %>% 
+  dplyr::select(
+    run,
+    week_pathogen,
+    ind_inf,
+    scenario,
+    roaming,
+    duration_weeks,
+    trans_m,
+    trans_g,
+    trans_a = trans,
+    patches_0:patches_9
+  ) %>% 
+  gather(qual, patch_count, -c(run:trans_a)) %>%
+  dplyr::select(run:duration_weeks, qual, patch_count, everything()) %>% 
+  mutate(
+    qual = substr(qual, nchar(qual), nchar(qual) + 1),
+    week_pathogen = week_pathogen - 1
+  )
+
+## habitat quality
+df_inf_qual %>% 
+  filter(
+    week_pathogen == 0,
+    scenario != "Homogeneous"
+  ) %>%
+  ggplot(aes(qual, patch_count / 1250)) +
+    geom_boxplot(aes(color = scenario)) +
+    facet_grid(~ fct_rev(scenario)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.6, direction = -1) +
+    theme(legend.position = "bottom") +
+    labs(x = "Habitat quality class", y = "Average proportion of cells")
+
+if (save == T) { ggsave("./plots/explorative/P7_quality_box.png", width = 7.8, height = 3.5, dpi = dpi) }
+```
+
+
+## P8: "Transmission events"
+
+```{r p8-transmission-data}
+## trans data set for on-the-move and within-group infections
+df_trans <- df_inf_plots %>% 
+  filter(
+    week_pathogen > 0
+  ) %>% 
+  dplyr::select(
+    run,
+    week_pathogen,
+    duration_weeks,
+    scenario,
+    roaming,
+    patches_0,
+    ind_all,
+    trans_m,
+    trans_g,
+    trans_a = trans
+  ) %>% 
+  gather(trans, trans_count, -c(run:ind_all)) %>% 
+  mutate(
+    trans = substr(trans, nchar(trans), nchar(trans) + 1),
+    type = case_when(trans == "m" ~ "Ranging males",
+                     trans == "g" ~ "Group-living individuals",
+                     trans == "a" ~ "All individuals")
+  ) 
+```
+
+### Transmission over time
+
+```{r p7-data-trans-time, fig.width = 10, fig.height = 12.5}
+## normed transmission per habitat quality - over time
+lab_roam_n <- c("Correlated\nrandom walk", "Habitat-dependent\nmovement", "Competition-driven\nmovement")
+
+df_trans_time <- df_trans %>% 
+  mutate(
+    trans_count = trans_count / ind_all,
+    roaming = factor(roaming, labels = lab_roam_n),
+    quarter = week_pathogen %/% 13
+  ) %>% 
+  group_by(roaming, scenario, quarter, trans, type) %>%
+  summarize(
+    avg = mean(trans_count, na.rm = T), 
+    upr = avg + sd(trans_count, na.rm = T), 
+    lwr = avg - sd(trans_count, na.rm = T)
+  ) %>%
+  ungroup() %>% 
+  mutate(lwr = ifelse(lwr < 0, 0, lwr))
+```
+
+```{r p8-trans-all, fig.width = 10, fig.heigth = 12.5}
+df_trans_time %>% 
+  filter(trans == "a") %>%
+  ggplot(aes(quarter / 4, avg)) +
+    geom_vline(aes(xintercept = 2.5), linetype = "dotted", color = "grey40") +
+    geom_ribbon(aes(ymin = lwr, ymax = upr), fill = "tan1", alpha = 0.5) + 
+    geom_line(size = 0.35) +
+    facet_grid(scenario ~ roaming, scales = "free_y") +
+    scale_x_continuous(breaks = seq(0, 10, by = 2.5)) +
+    labs(x = "Year since pathogen release", 
+         y = "Infections per week and patch")
+
+if (save == T) { ggsave("./plots/explorative/P8_TransQualTime_all.png", width = 10, height = 9, dpi = dpi) }
+```
+
+```{r p8-trans-males+group, fig.width = 10, fig.heigth = 12.5}
+n <- df_infmean_plots %>%   
+  group_by(roaming, cfr, scenario) %>%
+  count() %>% 
+  ungroup() %>% 
+  summarize(n = unique(n)) %>% 
+  pull()
+
+df_dur <- df_infmean_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  mutate(
+    roaming = factor(roaming, labels = lab_roam_n),
+    duration_quarter = if_else(duration_quarter > 40, 50, floor(duration_quarter))
+  ) %>% 
+  group_by(roaming, scenario, duration_quarter) %>% 
+  summarize(prop = n() / n)
+
+df_ext <- df_inf_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  group_by(roaming, scenario, run) %>% 
+  summarize(week_ext = max(week_ext - week_release)) %>% 
+  filter(week_ext < 520) %>% 
+  ungroup() %>% 
+  mutate(
+    roaming = factor(roaming, labels = lab_roam_n),
+    avg = 0
+  )
+
+df_trans_time %>% 
+  filter(trans != "a") %>%
+  ggplot(aes(quarter / 4, avg)) +
+    geom_bar(data = filter(df_dur, duration_quarter < 50), aes(duration_quarter / 4 + 0.125, prop / 5), 
+             stat = "identity", width = 0.2, fill = "grey80") +
+    geom_vline(aes(xintercept = 2.625), linetype = "dashed", color = "grey60", size = 0.3) +
+    geom_ribbon(aes(ymin = lwr, ymax = upr, fill = type), alpha = 0.25) + 
+    geom_line(aes(color = type), size = 0.5) +
+    geom_rug(data = df_ext, aes(x = week_ext / 52), 
+           sides = "b", color = "grey60", alpha = 0.5, size = 0.3) +
+    facet_grid(scenario ~ roaming) +
+    scale_x_continuous(breaks = seq(0, 10, by = 2.5), labels = seq(0, 10, by = 2.5)) +
+    scale_y_continuous(limits = c(-0.001, 0.055), breaks = seq(0, 0.06, by = 0.02), sec.axis = sec_axis(~.*5)) +
+    scale_color_manual(values = c("#766ce3", "#7cdc9e"), name = NULL) +
+    scale_fill_manual(values  = c("#766ce3", "#7cdc9e"), name = NULL) +
+    labs(x = "Outbreak duration (years)", 
+         y = "Weekly transmissions per individual") +
+    theme(legend.position = "bottom",
+          strip.background.y = element_blank(),
+          strip.text.y = element_blank(),
+          strip.text = element_text(size = 12),
+          axis.title.x = element_text(size = 12),
+          axis.title.y = element_text(size = 12),
+          axis.text = element_text(size = 10),
+          legend.text = element_text(size = 10.5))
+
+if (save == T) { ggsave("./plots/explorative/P8_TransQualTime_groups.png", width = 10, height = 9, dpi = dpi) }
+```
+
+
+### Grouped data by 3 periods (fade-out/invasion/persistence)
+
+```{r p8-data-trans-period}
+## grouped + summarized by period and duration
+df_trans_grouped <- df_trans %>%
+  mutate(
+    trans_count = trans_count / (1250 - patches_0),
+    roaming = factor(roaming, labels = lab_roam_n),
+    period = case_when(
+      duration_weeks <= 104 & week_pathogen <= 104 ~ "fade-out",
+      duration_weeks >  104 & week_pathogen <= 104 ~ "invasion",
+      duration_weeks >  104 & week_pathogen >  104 ~ "persistence"
+    )
+  ) %>% 
+  group_by(roaming, scenario, run, period, trans, type) %>%
+  summarize(
+    avg = mean(trans_count, na.rm = T), 
+    upr = avg + sd(trans_count, na.rm = T), 
+    lwr = avg - sd(trans_count, na.rm = T)
+  ) %>%
+  ungroup() %>% 
+  mutate(lwr = ifelse(lwr < 0, 0, lwr))
+```
+
+```{r p8-trans-period-boxplot, fig.width = 8, fig.height = 6.8}
+df_trans_grouped %>%
+  filter(trans != "a") %>% 
+  ggplot(aes(scenario, avg)) + 
+    geom_jitter(aes(color = type, shape = type), size = 0.1, alpha = 0.2,
+                position = position_jitterdodge(dodge.width = 0.85, jitter.width = 0.15)) +
+    geom_boxplot(aes(group = interaction(type, scenario)), position = position_dodge(width = 0.85), 
+                 color = "grey20", fill = "transparent", width = 0.75, outlier.alpha = 0, show.legend = F) + 
+    facet_grid(period ~ roaming) +
+    scale_y_continuous(breaks = seq(0, 0.4, by = 0.2))+
+    scale_color_manual(name = "Group:  ", values = c("royalblue4", "tan1", "firebrick")) +
+    scale_shape_manual(name = "Group:  ", values = c(15, 16, 17)) + 
+    guides(color = guide_legend(override.aes = list(alpha = 1, size = 3))) +
+    theme(legend.position = "bottom",
+          legend.title = element_text(size = 13, face = "plain"),
+          legend.text = element_text(size = 13, face = "plain"),
+          legend.key.size = unit(2, "line"),
+          plot.title = element_text(size = 18)) +
+    labs(x = "\nLandscape scenario", 
+         y = "Weekly transmission rate") +
+    theme(legend.position = "bottom",
+          axis.text.x = element_text(angle = 33, hjust = 1, vjust = 1))
+
+if (save == T) { ggsave("./plots/explorative/P8_TransQualPeriods_boxplot.png", width = 8, height = 6.8, dpi = dpi) }
+```
+
+***
+
+# Version info
+
+```{r version}
+version
+sessionInfo()
+```

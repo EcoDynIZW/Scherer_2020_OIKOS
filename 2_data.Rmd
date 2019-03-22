@@ -1,0 +1,261 @@
+---
+title: "SwiFCoIBMove: Data import and processing"
+author: "Cédric Scherer"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output: 
+  html_document:
+    theme: paper
+    #highlight: kate
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    link-citations: yes
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r knitr-setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+Script to import, process, and subset the simulation results (saved as .csv by running simulations using the "SwiFCoIBM-move.nlogo" file in the model folder).
+
+
+# Setup
+
+```{r libraries, message = F}
+## libraries
+library(tidyverse)     ## data wrangling
+library(magrittr)      ## ceci n'est pas une pipe
+
+filedate <- "2019-03-05"
+```
+
+
+# Data
+
+## Load data
+
+```{r load-data}
+df_all <- df_raw <- data.table::fread("./simulations/2019-03-05_SwiFCoIBMove_mue4.csv", skip = 6)
+```
+
+## Data cosmetics
+
+### rename columns
+
+```{r rename-cols}
+rename_map <- c(
+  '[run number]'                                                                      = "run",
+  'case_fatality'                                                                     = "cfr",
+  'file'                                                                              = "scenario",
+  'roaming'                                                                           = "roaming",
+  'mue'                                                                               = "mue",
+  'mue_max'                                                                           = "mue_max_rm",
+  'q'                                                                                 = "dir_pers",
+  'run_years'                                                                         = "run_years_rm",
+  'seed_setup'                                                                        = "seed_setup_rm",   
+  'mean_quality'                                                                      = "quality_rm",
+  'herd_prop'                                                                         = "herd_prop_rm",
+  'release_fct'                                                                       = "release_fct_rm",
+  'longevity'                                                                         = "longevity_rm",
+  'age_blur'                                                                          = "age_blur_rm",
+  'fem_prob'                                                                          = "fem_prob_rm",
+  'dist_disp'                                                                         = "dist_disp_rm",
+  'year_release'                                                                      = "year_release_rm",
+  'fert_red'                                                                          = "fert_red_rm",
+  'fetal_inf'                                                                         = "fetal_inf_rm",
+  't_anti'                                                                            = "t_anti_rm",
+  't_trans'                                                                           = "t_trans_rm",
+  'b_within'                                                                          = "beta_within",
+  'b_between'                                                                         = "beta_between_rm",
+  'b_move'                                                                            = "beta_move",
+  '[step]'                                                                            = "week",
+  'seed'                                                                              = "seed",
+  'count turtles'                                                                     = "ind_all",
+  'count turtles with [epi_stat = \"\"esSusc\"\"]'                                    = "ind_susc",
+  'count turtles with [epi_stat = \"\"esTrans\"\"]'                                   = "ind_trans",
+  'count turtles with [epi_stat = \"\"esLeth\"\"]'                                    = "ind_leth",
+  'count turtles with [dem_stat = \"\"dsRoaming\"\"]'                                 = "roam_all",
+  'count turtles with [dem_stat = \"\"dsRoaming\"\" AND epi_stat = \"\"esSusc\"\"]'   = "roam_susc",
+  'count turtles with [dem_stat = \"\"dsRoaming\"\" AND epi_stat = \"\"esTrans\"\"]'  = "roam_trans",
+  'count turtles with [dem_stat = \"\"dsRoaming\"\" AND epi_stat = \"\"esLeth\"\"]'   = "roam_leth",
+  'new_trans'                                                                         = "new_trans",
+  'new_leth'                                                                          = "new_leth",
+  'contacts_avg'                                                                      = "contacts_avg",
+  'contacts_med'                                                                      = "contacts_med",
+  'contacts_lwr'                                                                      = "contacts_lwr",
+  'contacts_upr'                                                                      = "contacts_upr",
+  'contacts_max'                                                                      = "contacts_max",
+  'contacts_var'                                                                      = "contacts_var",
+  'contacts_1'                                                                        = "contacts_1",
+  'contacts_2'                                                                        = "contacts_2",
+  'contacts_3'                                                                        = "contacts_3",
+  'contacts_4'                                                                        = "contacts_4",
+  'contacts_5'                                                                        = "contacts_5",
+  'contacts_6'                                                                        = "contacts_6",
+  'contacts_7'                                                                        = "contacts_7",
+  'contacts_8'                                                                        = "contacts_8",
+  'contacts_9'                                                                        = "contacts_9",
+  'trans_w'                                                                           = "trans_w",
+  'trans_b'                                                                           = "trans_b",
+  'trans_g'                                                                           = "trans_g",
+  'patches_0'                                                                         = "patches_0",
+  'patches_1'                                                                         = "patches_1",
+  'patches_2'                                                                         = "patches_2",
+  'patches_3'                                                                         = "patches_3",
+  'patches_4'                                                                         = "patches_4",
+  'patches_5'                                                                         = "patches_5",
+  'patches_6'                                                                         = "patches_6",
+  'patches_7'                                                                         = "patches_7",
+  'patches_8'                                                                         = "patches_8",
+  'patches_9'                                                                         = "patches_9",
+  'count patches with [is_infected = 1]'                                              = "cell_infected",
+  'count patches with [is_infectious = 1]'                                            = "cell_infectious",
+  'max [id] of patches'                                                               = "n_cluster",
+  'count_init'                                                                        = "count_init",
+  'count_init_roaming'                                                                = "count_init_roaming",
+  'dens_var'                                                                          = "dens_var_all",
+  'dens_roam_var'                                                                     = "dens_var_roam",
+  'dens_inf_group_var'                                                                = "dens_var_inf_group",
+  'dens_inf_roam_var'                                                                 = "dens_var_inf_roam",
+  'quality_mean_6'                                                                    = "qual_mean_6",
+  'mean [visited] of turtles with [dem_stat = \"\"dsRoaming\"\"]'                     = "visits_mean",
+  'F_infectious'                                                                      = "F_infectious",
+  'F_infected'                                                                        = "F_infectected",
+  'dist_inf'                                                                          = "dist_inf",
+  'week_inf_max'                                                                      = "week_inf_max",
+  'week_release'                                                                      = "week_release",
+  'week_last'                                                                         = "week_last"
+)
+names(df_all) <- rename_map[names(df_all)]
+rm(rename_map)
+```
+
+### select columns used for further analyses and factorize variables
+
+```{r select+factorize}
+df_all %<>% 
+  dplyr::select(-ends_with("_rm")) %>% 
+  mutate_at(c(1:2, 5:length(.)), as.numeric)
+ 
+(lev_roam <- unique(df_all$roaming))
+(lev_scen <- unique(df_all$scenario))
+
+df_all %<>% 
+  mutate(
+    run      = factor(run),
+    cfr      = factor(cfr),
+    roaming  = factor(roaming, levels = lev_roam),
+    scenario = factor(scenario, levels = lev_scen)
+  ) 
+```
+
+### correct non-logical values, calculate additional parameters and fill up for each measurement if needed
+
+```{r correct+add}
+df_all %<>% 
+  group_by(run) %>% 
+  filter(week != 0) %>% 
+  mutate(
+    ind_immu     = ind_all - ind_trans - ind_leth - ind_susc,
+    ind_inf      = ind_trans + ind_leth,
+    roam_inf     = roam_trans + roam_leth,
+    roam_immu    = roam_all - roam_trans - roam_leth - roam_susc,
+    new_inf      = new_trans + new_leth,
+    week_last    = max(week_last),
+    trans_m      = trans_w + trans_b,
+    trans        = trans_g + trans_m,
+    contacts_avg = na_if(contacts_avg, -999),
+    contacts_med = na_if(contacts_med, -999),
+    contacts_lwr = na_if(contacts_lwr, -999),
+    contacts_upr = na_if(contacts_upr, -999),
+    contacts_max = na_if(contacts_max, -999),
+    contacts_var = na_if(contacts_var, -999)
+  ) %>%
+  filter(week <= week_last + 1) %>% 
+  mutate(
+    week_ext = if_else(week_last == 624, NA_real_, week_last + 1),
+    week_pathogen = week - week_release,
+    week_inf_max = week_inf_max - week_release + 1, 
+    week_inf_max = ifelse(week_inf_max < 1, NA, week_inf_max),
+    duration_weeks = max(week_pathogen),
+    duration_quarter = duration_weeks / 13
+  ) %>% 
+  arrange(run, week) %>%
+  tbl_df()
+```
+
+## Save as .Rds
+ 
+```{r save-proc }
+saveRDS(df_all, file = glue::glue("./data/{filedate}_SwiFCoIBMove_all.Rds"))
+```
+
+
+# Subsets
+
+## Create subsets
+
+```{r create-subsets}
+## only outbreak weeks
+df_inf <- df_all %>% 
+  filter(week >= week_release)
+
+## mean values for time of outbreak
+df_infmean <- df_inf %>% 
+  group_by(run) %>%
+  dplyr::select(-week, -week_pathogen, -week_ext) %>% 
+  summarise_all(funs(if(is.numeric(.)) mean(., na.rm = TRUE) else first(.)))
+
+## sample data for testing
+df_sample <- df_all %>%
+  group_by(roaming, scenario, mue, cfr, dir_pers) %>%
+  do(sample_n(., 500))
+```
+
+## Save subsets as .Rds
+
+```{r save-subsets}
+saveRDS(df_inf,     file = glue::glue("./data/{filedate}_SwiFCoIBMove_inf.Rds"))
+saveRDS(df_infmean, file = glue::glue("./data/{filedate}_SwiFCoIBMove_infmean.Rds"))
+```
+
+
+# Data info
+
+## Check sample size
+
+```{r sample-size}
+df_n <- df_infmean %>%   
+  group_by(roaming, cfr, mue, scenario) %>%
+  summarise(n = n())
+
+length(unique(df_n$n))
+```
+
+## Variables
+
+```{r variables}
+## number of unique values
+df_infmean %>% 
+  keep(is.factor) %>% 
+  map_int(n_distinct) 
+
+## unique values of each variable
+df_infmean %>% 
+  keep(is.factor) %>% 
+  dplyr::select(-run) %>% 
+  map(unique)
+```
+
+***
+
+# Version info
+
+```{r version}
+version
+sessionInfo()
+```

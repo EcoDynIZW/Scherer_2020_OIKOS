@@ -1,0 +1,227 @@
+---
+title: "SwiFCoIBMove: Calibration transmission probability via R0"
+author: "Cédric Scherer"
+date: '`r format(Sys.time(), "%B %d, %Y")`'
+output: 
+  html_document:
+  theme: paper
+#highlight: kate
+toc: true
+toc_float: true
+toc_depth: 3
+code_folding: hide
+link-citations: yes
+editor_options: 
+  chunk_output_type: console
+---
+  
+```{r knitr-setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+
+Script to import, process, and analyse the simulation results to estimate the "on the move" transmission rate (beta_move) plus some visualizations.
+
+
+# Setup
+
+```{r setup, message = F}
+library(tidyverse)
+source("./R/ggtheme_grey.R")
+source("./R/rainclouds.R")
+source("./R/hnudge.R")
+```
+
+
+# Data
+
+```{r data, message = F}
+#### READ DATA -----------------------------------------------------------------------------------------------
+## baseline runs
+R0_b <- data.table::fread("./simulations/2019-03-05_SwiFCoIBMove_R0_mue4_base.csv", skip = 6)  
+## runs with explicit movement
+R0_m <- data.table::fread("./simulations/2019-03-05_SwiFCoIBMove_R0_mue4_move.csv", skip = 6)
+
+
+#### DATA COSMETICS ------------------------------------------------------------------------------------------
+## change column names
+rename_map <- c(
+  '[run number]'                                  = "run",
+  'case_fatality'                                 = "cfr_rm",
+  'file'                                          = "scenario_rm",
+  'roaming'                                       = "roaming",
+  'mue'                                           = "mue_rm",
+  'q'                                             = "dir_pers_rm",
+  'run_years'                                     = "run_years_rm",
+  'seed_setup'                                    = "seed_setup_rm",   
+  'mean_quality'                                  = "quality_rm",
+  'herd_prop'                                     = "herd_prop_rm",
+  'release_fct'                                   = "release_fct_rm",
+  'longevity'                                     = "longevity_rm",
+  'age_blur'                                      = "age_blur_rm",
+  'fem_prob'                                      = "fem_prob_rm",
+  'dist_disp'                                     = "dist_disp_rm",
+  'year_release'                                  = "year_release_rm",
+  'fert_red'                                      = "fert_red_rm",
+  'fetal_inf'                                     = "fetal_inf_rm",
+  't_anti'                                        = "t_anti_rm",
+  't_trans'                                       = "t_trans_rm",
+  'b_within'                                      = "beta_within",
+  'b_between'                                     = "beta_between_rm",
+  'b_move'                                        = "beta_move",
+  '[step]'                                        = "week",
+  'inf_roam'                                      = "inf_roam",
+  'inf_size'                                      = "inf_size",
+  'count turtles with [epi_stat = \"\"esNew\"\"]' = "inf_new",
+  'count patches with [is_infected = 1]'          = "inf_cells",
+  'seed'                                          = "seed")
+
+names(R0_b) <- rename_map[names(R0_b)]
+names(R0_m) <- rename_map[names(R0_m)]
+
+## reduce variables and turn Movement strategy into a factor
+R0_proc <- R0_m %>% 
+  full_join(R0_b) %>% 
+  dplyr::select(-ends_with("_rm")) %>%
+  mutate_at(c(1:2, 4:10), as.numeric) %>%
+  mutate(roaming = factor(roaming, levels = c("OFF", "CRW", "HD", "CD"))) %>%
+  as_tibble() %>% 
+  arrange(run)
+```
+
+# Estimate optimal "beat_move"on the move" transmission rate for SwiFCoIBMove
+
+```{r ks-tests}
+#### KOLMOGOROV-SMIRNOV TESTS
+
+## create table for results (use as.numeric() not as.factor() since no levels are defined yet!)
+ks_tests <- data.frame(roaming = as.numeric(), beta_move = as.numeric(), D = as.numeric(), p = as.numeric())
+p <- 0
+
+## subsets used for KS test
+b <- R0_proc %>% 
+  filter(roaming == "OFF") %>% 
+  mutate(roaming = factor(roaming)) %>% 
+  dplyr::select(inf_new) %>% 
+  as.matrix()
+
+move <- R0_proc %>% 
+  filter(roaming != "OFF") %>% 
+  mutate(roaming = factor(roaming))
+
+## compare each Movement strategy (move$roaming) and transmission rate (move$beta_move) 
+## of the with the non-movement null model (base)
+for (i in levels(move$roaming)) {
+  for (j in unique(move$beta_move)) {
+    m <- move %>% filter(roaming == i, beta_move == j) %>% 
+      dplyr::select(inf_new) %>% as.matrix()
+    ks <- ks.test(b, m)
+    p <- p + 1
+    ks_tests[p, 1] <- i
+    ks_tests[p, 2] <- j
+    ks_tests[p, 3] <- as.numeric(ks[1])
+    ks_tests[p, 4] <- as.numeric(ks[2])
+  }
+}
+
+## sum of D - best fit the one with lowest overall D
+(best_fit <- ks_tests %>% 
+    group_by(beta_move) %>% 
+    summarize(sum_D = sum(D)) %>% 
+    arrange(sum_D))
+
+## best beta - to use for model simulation
+(beta_fit <- best_fit %>% 
+    top_n(1, -sum_D) %>%  ## smallest overall D
+    summarize(beta_move = mean(beta_move)) %>% 
+    pull(beta_move))
+```
+
+
+# Figures
+
+## Tile plot fitting
+
+```{r tileplot, fig.width = 12, fig.height = 2.3}
+library(viridis)
+
+## plot
+ks_tests %>%
+  filter(roaming != "OFF") %>%
+  group_by(beta_move) %>%
+  summarize(roaming = "MEAN", D = sum(D) / 3) %>%
+  full_join(filter(ks_tests, roaming != "OFF")) %>%
+  group_by(roaming) %>% 
+  complete(nesting(roaming), beta_move = full_seq(range(beta_move*1e4), 1) / 1e4) %>%
+  fill(D) %>% 
+  ungroup() %>% 
+  mutate(roaming = factor(roaming, levels = c("CRW", "HD", "CD", "MEAN"),
+                          labels = c("Correlated random walk",
+                                     "Habitat-dependent movement",
+                                     "Competition-driven movement",
+                                     "Mean over all movement strategies"))) %>%
+  ggplot(aes(beta_move, fct_rev(roaming))) +
+  geom_tile(aes(fill = D)) +
+  geom_vline(xintercept = beta_fit + 0.0005, linetype = "dotted", size = 0.5) +
+  geom_hline(yintercept = 1.51, size = 1, color = "white") +
+  scale_fill_viridis(option = "B", direction = -1, name = "D",
+                     breaks = seq(0, 0.8, by = 0.25), limits = c(0, 0.75)) +
+  scale_x_continuous(breaks = seq(0.0055, 0.055, by = 0.005),
+                     labels = seq(0.005, 0.05, by = 0.005), expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  theme(panel.border = element_blank()) +
+  labs(x = "Transmission probability", y = NULL)
+
+## save plot
+ggsave("./plots/FigS4_R0_fits_tile.png", width = 12, height = 2.1, dpi = 750)
+```
+
+## Raincloud plot of best fit
+
+```{r raincloud-plot, fig.width = 8, fig.height = 5.5}
+## color palettes
+#cols_viridis <- c("#440154", "#9AD93C", "#1FA188", "#375B8D")
+#cols_prism   <- c("#666666", "#38A6A5", "#1D6996", "#5F4690")
+#cols_bold    <- c("#666666", "#3969AC", "#11A579", "#7F3C8D")
+#cols_antique <- c("#7C7C7C", "#D9AF6B", "#AF6458", "#855C75")
+#cols_ant_new <- c("#868686", "#D9AF6B", "#975348", "#573c4c")
+
+cols <- c("#868686", "#D9AF6B", "#975348", "#573c4c")
+
+## plot
+R0_proc %>%
+  mutate(beta_move = ifelse(roaming == "OFF", beta_fit, beta_move)) %>%
+  dplyr::filter(beta_move == beta_fit) %>%
+  mutate(roaming = factor(roaming,
+                          levels = c("OFF", "CRW", "HD", "CD"),
+                          labels = c("Neighborhood\ninfection",
+                                     "Correlated\nrandom walk",
+                                     "Habitat-dependent\nmovement", 
+                                     "Competition-driven\nmovement"))) %>%
+  ggplot(aes(roaming, inf_new)) +
+  geom_flat_violin(aes(fill = roaming), color = NA,
+                   position = position_hnudge(x = 0.1), adjust = 3, trim = T) +
+  geom_point(aes(as.numeric(roaming) - 0.2, color = roaming), 
+             position = position_jitter(width = 0.1), size = 1.5, alpha = 0.25) +
+  geom_hline(yintercept = 1, linetype = "dotted") +
+  geom_boxplot(outlier.shape = NA, width = 0.125, colour = "gray40", fill = "white") +  
+  theme(legend.position = "none", axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  labs(x = "Movement strategy", y = "R0 (number of secondary infections)") +
+  coord_cartesian(xlim = c(1.15, 4), ylim = c(0, 10)) +
+  scale_y_continuous(breaks = c(0, 1, 5, 10)) +
+  scale_fill_manual(values = cols) +
+  scale_color_manual(values = cols)
+
+## save plot
+ggsave("./plots/FigS5_R0_best_fit.png", width = 8, height = 5.5, dpi = 750)
+```
+
+***
+  
+# Version info
+
+```{r version}
+version
+sessionInfo()
+```
+
