@@ -34,3 +34,17 @@ vignettes/*.pdf
 
 # Shiny token, see https://shiny.rstudio.com/articles/shinyapps.html
 rsconnect/
+
+# Html files
+html/*
+
+# Plots
+plots/*
+
+# Full simulation (too big)
+simulations/2019-03-05_SwiFCoIBMove_mue4.csv
+
+# .Rds data files
+data/*
+
+
