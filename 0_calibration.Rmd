@@ -173,7 +173,7 @@ ks_tests %>%
   labs(x = "Transmission probability", y = NULL)
 
 ## save plot
-ggsave("./plots/FigS4_R0_fits_tile.png", width = 12, height = 2.1, dpi = 750)
+ggsave("./plots/final/FigS4_R0_fits_tile.png", width = 12, height = 2.1, dpi = 750)
 ```
 
 ## Raincloud plot of best fit
@@ -213,7 +213,7 @@ R0_proc %>%
   scale_color_manual(values = cols)
 
 ## save plot
-ggsave("./plots/FigS5_R0_best_fit.png", width = 8, height = 5.5, dpi = 750)
+ggsave("./plots/final/FigS5_R0_best_fit.png", width = 8, height = 5.5, dpi = 750)
 ```
 
 ***
