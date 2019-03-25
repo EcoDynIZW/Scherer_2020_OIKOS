@@ -79,7 +79,7 @@ rename_map <- c(
 names(R0_b) <- rename_map[names(R0_b)]
 names(R0_m) <- rename_map[names(R0_m)]
 
-## reduce variables and turn Movement strategy into a factor
+## reduce variables and turn Movement rule into a factor
 R0_proc <- R0_m %>% 
   full_join(R0_b) %>% 
   dplyr::select(-ends_with("_rm")) %>%
@@ -109,7 +109,7 @@ move <- R0_proc %>%
   filter(roaming != "OFF") %>% 
   mutate(roaming = factor(roaming))
 
-## compare each Movement strategy (move$roaming) and transmission rate (move$beta_move) 
+## compare each movement rule (move$roaming) and transmission rate (move$beta_move) 
 ## of the with the non-movement null model (base)
 for (i in levels(move$roaming)) {
   for (j in unique(move$beta_move)) {
@@ -159,7 +159,7 @@ ks_tests %>%
                           labels = c("Correlated random walk",
                                      "Habitat-dependent movement",
                                      "Competition-driven movement",
-                                     "Mean over all movement strategies"))) %>%
+                                     "Mean over all movement rules"))) %>%
   ggplot(aes(beta_move, fct_rev(roaming))) +
   geom_tile(aes(fill = D)) +
   geom_vline(xintercept = beta_fit + 0.0005, linetype = "dotted", size = 0.5) +
@@ -206,7 +206,7 @@ R0_proc %>%
   geom_hline(yintercept = 1, linetype = "dotted") +
   geom_boxplot(outlier.shape = NA, width = 0.125, colour = "gray40", fill = "white") +  
   theme(legend.position = "none", axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  labs(x = "Movement strategy", y = "R0 (number of secondary infections)") +
+  labs(x = "Movement rule", y = "R0 (number of secondary infections)") +
   coord_cartesian(xlim = c(1.15, 4), ylim = c(0, 10)) +
   scale_y_continuous(breaks = c(0, 1, 5, 10)) +
   scale_fill_manual(values = cols) +
