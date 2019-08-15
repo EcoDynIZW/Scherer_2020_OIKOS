@@ -1177,12 +1177,9 @@ to Movement_DispFemales
       ask newhabitat [ set is_occupied 1 ]
       set list_disp_f []
     ][
-      ;; else = if there are no unoccupied habitat cells within their dispersal distance the dispersers emmigrate/die
-      ask turtles-here with [dem_stat = "dsDispF"]
-      [
-        ;; version used in Fernandez et al. 2006: dispersers stay in their maternal cell if no empty habitat cell is available
-        set dem_stat "esResident"
-  ] ] ]
+      ;; else: version used in Fernandez et al. 2006 -> dispersers stay in their maternal cell if no empty habitat cell is available
+      ask turtles-here with [dem_stat = "dsDispF"] [ set dem_stat "esResident" ]
+  ] ]
 
 end
 
