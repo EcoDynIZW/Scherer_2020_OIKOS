@@ -584,7 +584,7 @@ df_m6 <- df_quarter %>%
 fig_4a <- ggplot(df_m1, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
-                   alpha = 0.1, size = 0.15, color = "grey75") + 
+                   alpha = 0.1, size = 0.15, color = "grey80") + 
   geom_boxplot(aes(group = interaction(scenario, type)), 
                width = 0.75, position = position_dodge(0.85), 
                alpha = 0, outlier.alpha = 0, size = 0.4) + 
@@ -601,7 +601,7 @@ fig_4a <- ggplot(df_m1, aes(x = scenario, y = avg,
 ## b) visits by ranging males
 fig_4b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
-                   alpha = 0.25, size = 0.25, color = "grey75") + 
+                   alpha = 0.25, size = 0.25, color = "grey80") + 
   geom_boxplot(aes(group = interaction(scenario, type)), 
                width = 0.75, position = position_dodge(0.85), 
                alpha = 0, outlier.alpha = 0, size = 0.4) + 
@@ -619,9 +619,9 @@ fig_4b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) 
 ## c) contact rates per quality class
 fig_4c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_path(data = hom, aes(x = scenario, y = mean, group = roaming), 
-            color = "grey60", linetype = "dashed", size = 0.5) +
+            color = "grey65", linetype = "dashed", size = 0.5) +
   geom_quasirandom(width = 0.05, dodge.width = 0.95, 
-                   alpha = 0.1, size = 0.1, color = "grey75") + 
+                   alpha = 0.1, size = 0.1, color = "grey80") + 
   geom_boxplot(aes(group = interaction(scenario, type)), width = 0.95, 
                position = position_dodge2(1, preserve = "single"), 
                alpha = 0, outlier.alpha = 0, size = 0.4) + 
@@ -640,7 +640,7 @@ fig_4c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) 
 ## d) simultaneously affected patches
 fig_4d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
-                   alpha = 0.25, size = 0.25, color = "grey60") + 
+                   alpha = 0.25, size = 0.25, color = "grey65") + 
   geom_boxplot(aes(group = scenario), width = 0.7,
                alpha = 0, outlier.alpha = 0, size = 0.4, color = "#cc5d00") + 
   facet_grid(~ roaming) +
@@ -657,7 +657,7 @@ fig_4d <- ggplot(df_m4, aes(x = scenario, y = max)) +
 ## e) affected patches
 fig_4e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
-                   alpha = 0.25, size = 0.25, color = "grey60") + 
+                   alpha = 0.25, size = 0.25, color = "grey65") + 
   geom_boxplot(width = 0.7,
                alpha = 0, outlier.alpha = 0, size = 0.4, color = "#b22222") + 
   facet_grid(~ roaming) +
@@ -674,7 +674,7 @@ fig_4e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +
 fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
-                   alpha = 0.1, size = 0.15, color = "grey75") + 
+                   alpha = 0.1, size = 0.15, color = "grey80") + 
   geom_boxplot(aes(group = interaction(scenario, type)), 
                width = 0.75, position = position_dodge(0.85), 
                alpha = 0, outlier.alpha = 0, size = 0.4) + 
@@ -700,7 +700,7 @@ fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg,
     plot_layout(ncol = 1))
 
 ## final panel
-if (save == T) { ggsave("./plots/final/Fig4_multi_box.png", 
+if (save == T) { ggsave("./plots/final/Fig4_multi_box2.png", 
                         width = 8.5, height = 11.5, dpi = 750) }
 ```
 
@@ -849,7 +849,7 @@ fig_4b_f <- df_m6 %>%
           legend.text = element_text(size = 9)) +
     plot_layout(ncol = 1))
 
-if (save == T) { ggsave("./plots/final/Fig4b_multi_median.png", 
+if (save == T) { ggsave("./plots/final/Fig4b_multi_med.png", 
                         width = 8.5, height = 11.5, dpi = dpi) }
 ```
 
