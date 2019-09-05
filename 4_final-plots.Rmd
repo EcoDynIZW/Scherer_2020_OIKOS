@@ -452,55 +452,9 @@ if (save == T) { ggsave("./plots/final/Fig3_dynamics_b+w.png", width = 8.9, heig
 ```
 
 
-## Fig. 4: Probabilities of invasion success and persistence per case fatality risk
+## Fig. 4: Multipanel movement + landscape consequences
 
-```{r fig-4-pers-cfr-tile, fig.width = 8, fig.height = 6.3}
-df_4 <- df_infmean_plots %>% 
-  mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
-  group_by(roaming, scenario, cfr) %>%
-  summarize(
-    pers_mean = mean(pers),
-    inv_mean = mean(inv)
-  ) %>% 
-  ungroup()
-
-fig_4a <- ggplot(df_4, aes(cfr, fct_rev(scenario))) +
-  geom_tile(aes(fill = pers_mean)) +
-  facet_wrap(~ roaming) + 
-  scale_fill_viridis(option = "viridis", name = "Probability", limits = c(0, 0.48),
-                     breaks = seq(0, 0.4, by = 0.1)) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) +
-  labs(x = "Case fatality ratio", y = NULL, tag = "a", 
-       title = "Long-term persistence (outbreak duration > 10 years)")
-
-fig_4b <- ggplot(df_4, aes(cfr, fct_rev(scenario))) +
-  geom_tile(aes(fill = inv_mean)) +
-  facet_wrap(~ roaming) + 
-  scale_fill_viridis(option = "cividis", name = "Probability", limits = c(0, 1)) +
-  scale_x_discrete(expand = c(0, 0)) +
-  scale_y_discrete(expand = c(0, 0)) +
-  labs(x = "Case fatality ratio", y = NULL, tag = "b", 
-       title = "Short-term persistence (outbreak duration > 2.5 years)")
-
-(fig_4 <- (fig_4a + fig_4b) *
-  theme(strip.text = element_text(size = 11),
-        axis.text.x = element_text(size = 10),
-        axis.text.y = element_text(size = 11),
-        axis.title.x = element_text(size = 11),
-        axis.ticks.y = element_blank(),
-        plot.title = element_text(size = 14),
-        legend.title = element_text(size = 11),
-        legend.text = element_text(size = 10, color = "grey40")) + 
-  plot_layout(ncol = 1))
-
-if (save == T) { ggsave("./plots/final/Fig4_pers_cfr_tile.png", width = 8, height = 6.3, dpi = dpi) }
-```
-
-
-## Fig. 5: Multipanel movement + landscape consequences
-
-```{r fig-5-MultiBox-Data}
+```{r fig-4-MultiBox-Data}
 ## data set quarterly
 df_quarter <- df_inf_plots %>% 
   filter(
@@ -609,17 +563,25 @@ df_m6 <- df_quarter %>%
   gather(type, avg, -roaming, -scenario, -run, -quarter) %>% 
   mutate(
     type = substr(type, nchar(type), nchar(type) + 1),
-    type = ifelse(scenario == "Homogeneous", glue::glue("{type}_hom"), glue::glue("{type}_het"))
+    #type = ifelse(scenario == "Homogeneous", glue::glue("{type}_hom"), glue::glue("{type}_het")),
+    avg = case_when(
+      scenario == "Homogeneous" & type == "b" ~ 0,
+      scenario == "Homogeneous" & type == "b" ~ 1,
+      TRUE ~ avg
+    )
   ) %>% 
-  filter(type != "b_hom") %>% 
+  mutate(type = factor(type, levels = c("w", "b"),
+                             labels = c("Within-cluster", "Between-cluster")))
+  #filter(type != "b_hom") %>% 
   mutate(type = factor(type, levels = c("b_het", "w_het", "w_hom"),
                              labels = c("Between-cluster", "Within-cluster", "Homogeneous")))
 ```
 
+### Fig. 4a Box + Beeswarm
 
-```{r fig-5-MultiBox, fig.width = 8.5, fig.height = 11.5}
+```{r fig-4-MultiBox, fig.width = 8.5, fig.height = 11.5}
 ## a) density of hosts
-fig_5a <- ggplot(df_m1, aes(x = scenario, y = avg, 
+fig_4a <- ggplot(df_m1, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.1, size = 0.15, color = "grey75") + 
@@ -637,7 +599,7 @@ fig_5a <- ggplot(df_m1, aes(x = scenario, y = avg,
         strip.text = element_text(size = 12.5))
 
 ## b) visits by ranging males
-fig_5b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) +   
+fig_4b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.25, size = 0.25, color = "grey75") + 
   geom_boxplot(aes(group = interaction(scenario, type)), 
@@ -655,7 +617,7 @@ fig_5b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) 
         strip.background = element_blank())
 
 ## c) contact rates per quality class
-fig_5c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) +   
+fig_4c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_path(data = hom, aes(x = scenario, y = mean, group = roaming), 
             color = "grey60", linetype = "dashed", size = 0.5) +
   geom_quasirandom(width = 0.05, dodge.width = 0.95, 
@@ -676,7 +638,7 @@ fig_5c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) 
         strip.background = element_blank())
 
 ## d) simultaneously affected patches
-fig_5d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
+fig_4d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
                    alpha = 0.25, size = 0.25, color = "grey60") + 
   geom_boxplot(aes(group = scenario), width = 0.7,
@@ -693,7 +655,7 @@ fig_5d <- ggplot(df_m4, aes(x = scenario, y = max)) +
         strip.background = element_blank())
 
 ## e) affected patches
-fig_5e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +   
+fig_4e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
                    alpha = 0.25, size = 0.25, color = "grey60") + 
   geom_boxplot(width = 0.7,
@@ -709,7 +671,7 @@ fig_5e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +
         strip.background = element_blank())
 
 ## f) trans within + between
-fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg, 
+fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.1, size = 0.15, color = "grey75") + 
@@ -718,9 +680,9 @@ fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg,
                alpha = 0, outlier.alpha = 0, size = 0.4) + 
   facet_grid(~ roaming) +
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.25)) +
-  scale_color_manual(values = c("#d48d09", "#580080", "#8a8a8a"), 
+  scale_color_manual(values = c("#580080", "#d48d09"), 
                      name = "Transmission:") + 
-  labs(x = "Landscape scenario", y = "\nProportion of\ninfections", 
+  labs(x = "Landscape scenario", y = "\nProportion of\nsuccessful transmissions", 
        tag = "f", title = NULL, subtitle = NULL) +
   theme(axis.text.x = element_text(size = 9.5, angle = 33, 
                                    hjust = 1, vjust = 1),
@@ -728,9 +690,9 @@ fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg,
         strip.text = element_blank(),
         strip.background = element_blank())
  
-((fig_5 <- fig_5a + fig_5b + fig_5c + fig_5d + fig_5e + fig_5f) *
+((fig_4 <- fig_4a + fig_4b + fig_4c + fig_4d + fig_4e + fig_4f) *
     theme(axis.text.y = element_text(size = 10),
-          axis.title.y = element_text(size = 10),
+          axis.title.y = element_text(size = 9.5),
           plot.margin = margin(1, 1, 1, 1),
           plot.tag = element_text(size = 12),
           legend.title = element_text(size = 10, face = "plain"),
@@ -738,13 +700,15 @@ fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg,
     plot_layout(ncol = 1))
 
 ## final panel
-if (save == T) { ggsave("./plots/final/Fig5_multi_box.png", 
+if (save == T) { ggsave("./plots/final/Fig4_multi_box.png", 
                         width = 8.5, height = 11.5, dpi = 750) }
 ```
 
+### Fig. 4b: Median + Line
+
 ```{r fig-5-multi-median, fig.width = 8.5, fig.height = 11.5, eval = F, include = F}
 ## a) density of hosts
-fig_5b_a <- df_m1  %>% 
+fig_4b_a <- df_m1  %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(avg)) %>% 
   ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
@@ -762,7 +726,7 @@ fig_5b_a <- df_m1  %>%
           strip.text = element_text(size = 12))
 
 ## b) visits by ranging males
-fig_5b_b <- df_m2 %>% 
+fig_4b_b <- df_m2 %>% 
   summarize(avg = mean(med, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
     geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
@@ -780,7 +744,7 @@ fig_5b_b <- df_m2 %>%
           strip.background = element_blank())
 
 ## c) contact rates per quality class
-fig_5b_c <- df_m3  %>% 
+fig_4b_c <- df_m3  %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(med)) %>% 
   ggplot(aes(x = scenario, y = avg)) +   
@@ -806,7 +770,7 @@ fig_5b_c <- df_m3  %>%
           strip.background = element_blank())
 
 ## d) infected patches
-fig_5b_d <- df_m4 %>% 
+fig_4b_d <- df_m4 %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(max, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, 
@@ -829,7 +793,7 @@ fig_5b_d <- df_m4 %>%
           strip.background = element_blank())
 
 ## e) affected patches
-fig_5b_e <- df_m5 %>% 
+fig_4b_e <- df_m5 %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(max, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, 
@@ -852,7 +816,7 @@ fig_5b_e <- df_m5 %>%
           strip.background = element_blank())
 
 ## f) trans within + between
-fig_5b_f <- df_m6 %>% 
+fig_4b_f <- df_m6 %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = median(avg, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, 
@@ -876,7 +840,7 @@ fig_5b_f <- df_m6 %>%
           strip.background = element_blank())
 
 ## final panel
-(fig_5_b <- (fig_5b_a + fig_5b_b + fig_5b_c + fig_5b_d + fig_5b_e + fig_5b_f) *
+(fig_4_b <- (fig_4b_a + fig_4b_b + fig_4b_c + fig_4b_d + fig_4b_e + fig_4b_f) *
     theme(axis.text.y = element_text(size = 9.5),
           axis.title.y = element_text(size = 11),
           plot.margin = margin(1, 1, 1, 1),
@@ -885,8 +849,54 @@ fig_5b_f <- df_m6 %>%
           legend.text = element_text(size = 9)) +
     plot_layout(ncol = 1))
 
-if (save == T) { ggsave("./plots/final/Fig5b_multi_median.png", 
+if (save == T) { ggsave("./plots/final/Fig4b_multi_median.png", 
                         width = 8.5, height = 11.5, dpi = dpi) }
+```
+
+
+## Fig. 5: Probabilities of invasion success and persistence per case fatality risk
+
+```{r fig-5-pers-cfr-tile, fig.width = 8, fig.height = 6.3}
+df_5 <- df_infmean_plots %>% 
+  mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
+  group_by(roaming, scenario, cfr) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv)
+  ) %>% 
+  ungroup()
+
+fig_5a <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = pers_mean)) +
+  facet_wrap(~ roaming) + 
+  scale_fill_viridis(option = "viridis", name = "Probability", limits = c(0, 0.48),
+                     breaks = seq(0, 0.4, by = 0.1)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Case fatality ratio", y = NULL, tag = "a", 
+       title = "Long-term persistence (outbreak duration > 10 years)")
+
+fig_5b <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = inv_mean)) +
+  facet_wrap(~ roaming) + 
+  scale_fill_viridis(option = "cividis", name = "Probability", limits = c(0, 1)) +
+  scale_x_discrete(expand = c(0, 0)) +
+  scale_y_discrete(expand = c(0, 0)) +
+  labs(x = "Case fatality ratio", y = NULL, tag = "b", 
+       title = "Short-term persistence (outbreak duration > 2.5 years)")
+
+(fig_5 <- (fig_5a + fig_5b) *
+  theme(strip.text = element_text(size = 11),
+        axis.text.x = element_text(size = 10),
+        axis.text.y = element_text(size = 11),
+        axis.title.x = element_text(size = 11),
+        axis.ticks.y = element_blank(),
+        plot.title = element_text(size = 14),
+        legend.title = element_text(size = 11),
+        legend.text = element_text(size = 10, color = "grey40")) + 
+  plot_layout(ncol = 1))
+
+if (save == T) { ggsave("./plots/final/Fig5_pers_cfr_tile.png", width = 8, height = 6.3, dpi = dpi) }
 ```
 
 
