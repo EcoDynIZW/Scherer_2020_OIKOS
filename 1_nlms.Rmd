@@ -175,32 +175,21 @@ metrics_nlm <- metrics_l %>%
   )
 
 ## plot
-metrics_nlm %>% 
-  group_by(metric, scenario) %>%
-  summarise(
-    avg = mean(value, na.rm = T),
-    sd = sd(value, na.rm = T),
-    iqr = 1.5 * IQR(value, na.rm = T)
-  ) %>% 
-  ungroup() %>% 
-  ggplot(aes(scenario, avg, color = scenario, fill = scenario)) +
-    geom_boxplot(aes(middle = avg - sd, lower = avg - sd, upper = avg + sd,
-                     ymin = avg - iqr, ymax = avg + iqr), stat = "identity", width = 0.6) + 
-    geom_segment(aes(x = as.numeric(scenario) - 0.5, xend = as.numeric(scenario) + 0.5, 
-                     y = avg, yend = avg, alpha = c(rep(1, 11), 0)), color = "white", size = 0.75) + 
-    geom_jitter(data = metrics_nlm, aes(scenario, value), 
-                color = "grey40", alpha = 0.3, width = 0.1, size = 0.5) +
-    facet_wrap(~ metric, nrow = 1, scales = "free_y") +
-    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.65, direction = -1, name = "") +
-    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.65, direction = -1, name = "") +
-    scale_alpha_continuous(guide = F) +
-    labs(x = "Landscape scenario", y = "Value") +
-    theme(axis.text.x = element_blank(),
-          axis.ticks.x = element_blank(),
-          axis.title.x = element_text(size = 14),
-          axis.title.y = element_text(size = 14),
-          strip.text = element_text(size = 12.5),
-          legend.position = "bottom")
+ggplot(metrics_nlm, aes(scenario, value, color = scenario)) +
+  geom_boxplot(fill = NA, width = 0.8, outlier.alpha = 0) + 
+  ggbeeswarm::geom_quasirandom(shape = 1, width = 0.2, color = "grey40", 
+                               alpha = 0.4, size = 0.5) +
+  facet_wrap(~ metric, nrow = 1, scales = "free_y") +
+  scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.65, 
+                        direction = -1, name = "") +
+  scale_alpha_continuous(guide = F) +
+  labs(x = "Landscape scenario", y = "Value") +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        strip.text = element_text(size = 12.5),
+        legend.position = "bottom")
 
 if (save == T) { ggsave("./plots/final/FigS6_nlm_metrics.png", width = 11, height = 5, dpi = 750) }
 ```
