@@ -4,13 +4,12 @@ author: "Cédric Scherer"
 date: '`r format(Sys.time(), "%B %d, %Y")`'
 output: 
   html_document:
-  theme: paper
-#highlight: kate
-toc: true
-toc_float: true
-toc_depth: 3
-code_folding: hide
-link-citations: yes
+    theme: paper
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    link-citations: yes
 editor_options: 
   chunk_output_type: console
 ---
@@ -194,7 +193,7 @@ R0_proc %>%
   dplyr::filter(beta_move == beta_fit) %>%
   mutate(roaming = factor(roaming,
                           levels = c("OFF", "CRW", "HD", "CD"),
-                          labels = c("Neighborhood\ninfection",
+                          labels = c("Neighbourhood\ninfection",
                                      "Correlated\nrandom walk",
                                      "Habitat-dependent\nmovement", 
                                      "Competition-driven\nmovement"))) %>%
@@ -224,4 +223,3 @@ ggsave("./plots/final/FigS5_R0_best_fit.png", width = 8, height = 5.5, dpi = 750
 version
 sessionInfo()
 ```
-

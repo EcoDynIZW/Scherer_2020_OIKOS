@@ -5,7 +5,6 @@ date: '`r format(Sys.time(), "%B %d, %Y")`'
 output: 
   html_document:
     theme: paper
-    #highlight: kate
     toc: true
     toc_float: true
     toc_depth: 3
@@ -1430,6 +1429,5 @@ if (save == T) { ggsave("./plots/explorative/P8_TransQualPeriods_boxplot.png", w
 # Version info
 
 ```{r version}
-version
 sessionInfo()
 ```
