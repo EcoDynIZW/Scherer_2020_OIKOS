@@ -129,7 +129,7 @@ dpi <- 750
 ```
 
 
-# Plots
+# Figures Main Text
 
 ## Fig. 1: Scheme
 
@@ -157,18 +157,21 @@ fig_1a <- df_all %>%
   ) %>% 
   ggplot(aes(week, count)) +   
     geom_rect(aes(xmin = 53, xmax = 104, ymin = -Inf, ymax = Inf), fill = "grey90") +
+    geom_hline(yintercept = 0, color = "grey85", size = 0.3) +
     geom_line(aes(color = class), size = 0.5) +
     geom_vline(xintercept = 95, linetype = "dotted", color = "grey50", size = 0.4) +  ## 95 == week_release
     scale_x_continuous(breaks = seq(0, 624, by = 52), limits = c(0, 624), 
-                       labels = c("0", "", "104", "", "", "", "", "312", "", "", "", "", "624")) + 
-    scale_y_continuous(labels = scales::comma_format()) +
+                       labels = c("0", "", "2", "", "4", "", "6", "", "8", "", "10", "", "12")) + 
+    scale_y_continuous(labels = scales::comma_format(),
+                       expand = c(0.05, 0.05),
+                       limits = c(0, 38000)) +
     scale_color_manual(name = NULL, values = c("grey20", "navajowhite3", "orangered")) +
     theme(legend.position = c(0.6, 0.93), 
           legend.box = "horizontal",
           legend.background = element_rect(fill = "transparent"),
           legend.text = element_text(face = "bold"),
           plot.background = element_rect(fill = "transparent", colour = NA)) +
-    labs(x = "Week", y = "Individuals") +
+    labs(x = "Simulated years", y = "Individuals", title = NULL) +
     guides(color = guide_legend(nrow = 1))
 ```
 
@@ -181,7 +184,9 @@ df_1b <- df_inf_plots %>%
     scenario == "Small clusters",
     roaming == "Competition-driven movement"
   ) %>% 
-  mutate(pers = ifelse(duration_weeks > 520, ">10", "<10")) %>% 
+  mutate(
+    pers = ifelse(duration_weeks > 520, ">10", "<10")
+  ) %>% 
   group_by(scenario, roaming, week_pathogen) %>% 
   mutate(
     meanInf  = mean(ind_inf),
@@ -191,21 +196,35 @@ df_1b <- df_inf_plots %>%
 labs <- c("\u2264 10 years", "> 10 years")
 
 fig_1b <- ggplot() +   
-  geom_line(data = filter(df_1b, pers == ">10"), aes(week_pathogen, ind_inf, group = run, 
-            color = "<10"), size = 0.3, alpha = 0.4) +
-  geom_line(data = filter(df_1b, pers == "<10"), aes(week_pathogen, ind_inf, group = run, 
-            color = ">10"), size = 0.3, alpha = 0.4) +
-  geom_line(data = df_1b, aes(week_pathogen, meanInf), color = "black", size = 0.35) +
-  geom_rug(data = filter(df_1b, pers == "<10"), aes(duration_weeks), 
+  geom_hline(yintercept = 0, color = "grey85", size = 0.3) +
+  geom_line(data = filter(df_1b, pers == ">10"), 
+            aes(week_pathogen, ind_inf, 
+                group = run, color = ">10"), 
+            size = 0.33, alpha = 0.4) +
+  geom_line(data = filter(df_1b, pers == "<10"), 
+            aes(week_pathogen, ind_inf, 
+                group = run, color = "<10"), 
+            size = 0.33, alpha = 0.4) +
+  geom_line(data = df_1b, 
+            aes(week_pathogen, meanInf), 
+            color = "black", size = 0.35) +
+  geom_rug(data = filter(df_1b, pers == "<10"), 
+           aes(duration_weeks), 
            sides = "b", alpha = 0.4, size = 0.3) +
-  scale_x_continuous(breaks = seq(0, 520, by = 52), limits = c(0, 520), labels = weeks_only) + 
-  scale_y_continuous(labels = scales::comma_format()) +
-  scale_color_manual(values = c(">10" = "grey20", "<10" = "tan1"), name = NULL, labels = labs) +
-  theme(legend.position = c(0.75, 0.85), 
+  scale_x_continuous(breaks = seq(0, 520, by = 52), 
+                     limits = c(0, 520), 
+                     labels = 0:10) + 
+  scale_y_continuous(labels = scales::comma_format(), 
+                     expand = c(0.05, 0.05)) +
+  scale_color_manual(values = c("<10" = "tan1", ">10" = "grey20"), 
+                     name = NULL, labels = labs) +
+  guides(color = guide_legend(override.aes = list(size = 0.8, alpha = 1))) +
+  theme(legend.position = c(0.65, 0.85), 
         legend.box = "horizontal",
         legend.background = element_rect(fill = "transparent"),
-        plot.background = element_rect(fill = "transparent",colour = NA)) +
-  labs(x = "Week since pathogen release", y = "Infected individuals")
+        legend.key.width = unit(1.8, "lines"),
+        plot.background = element_rect(fill = "transparent", color = NA)) +
+  labs(x = "Years since pathogen release", y = "Infected individuals", title = NULL)
 ```
 
 ### c) Outbreak duration
@@ -229,20 +248,19 @@ df_1c <- df_infmean_plots %>%
   summarize(prop = n() / n)
 
 fig_1c <- ggplot(filter(df_1c, duration_quarter != 48), aes(duration_quarter / 4, prop)) + 
+  geom_hline(yintercept = 0, color = "grey85", size = 0.3) +
   geom_bar(aes(group = duration_quarter), fill = "grey30", stat = "identity", width = 0.2) +
   geom_bar(data = filter(df_1c, duration_quarter == 48), 
            aes(group = duration_quarter), fill = "tan1", stat = "identity", width = 0.2) +
   geom_vline(xintercept = 11, linetype = "dotted", size = 0.5) +
-  geom_vline(xintercept = 2.625, linetype = "dotted", color = "grey30", size = 0.4) +
-  geom_vline(xintercept = 5.125, linetype = "dotted", color = "grey30", size = 0.4) +
-  geom_vline(xintercept = 7.625, linetype = "dotted", color = "grey30", size = 0.4) +
+  geom_vline(xintercept = c(2.625, 5.125, 7.625), linetype = "dotted", color = "grey30", size = 0.4) +
   scale_x_continuous(breaks = c(0, 2.5, 5, 7.5, 10, 12), 
                      labels = c(0, 2.5, 5, 7.5, 10, ">10")) +
-  scale_y_continuous(breaks = c(0, 0.1, 0.2, 0.3)) +
+  scale_y_continuous(breaks = c(0, 0.1, 0.2, 0.3), expand = c(0.01, 0.01)) +
   expand_limits(x = c(0, 12.25), y = c(0, 0.22)) +
   theme(legend.position = "none",
         plot.background = element_rect(fill = "transparent",colour = NA)) +
-  labs(x = "Outbreak duration (years)", y = "Proportion of runs")
+  labs(x = "Outbreak duration (years)", y = "Proportion of runs", title = NULL)
 ```
 
 ### Full panel
@@ -255,30 +273,44 @@ fig_1c <- ggplot(filter(df_1c, duration_quarter != 48), aes(duration_quarter / 4
    plot_layout(widths = c(1.3, 0.02, 1.4, 0.02, 1.5), nrow = 1))
 
 if (save == T) { 
-  ggsave("./plots/final/Fig1_workflow.png", width = 11.7, height = 2.5, dpi = dpi)
-  ggsave("./plots/final/Fig1_workflow.pdf", width = 11.7, height = 2.5, device = cairo_pdf) 
+  ggsave("./plots/final/Fig1_workflow.png", width = 11.7, height = 3, dpi = dpi)
+  ggsave("./plots/final/Fig1_workflow.pdf", width = 11.7, height = 3, device = cairo_pdf) 
 }
 ```
 
 
-## Fig. 2: Persistence probabilities
+## Fig. 3: Persistence probabilities
 
-```{r fig-2-pers-groups, fig.width = 13.5, fig.height = 7.5}
-df_2 <- df_infmean_plots %>% 
+```{r fig-3-pers-groups, fig.width = 13.5, fig.height = 7.5}
+df_3 <- df_infmean_plots %>% 
   filter(cfr == cfr_filter)
 
 ## per movement rule
-fig_2_roam <- df_2 %>% 
+fig_3_roam <- 
+  df_3 %>% 
   group_by(roaming) %>%
   summarize(
     pers_mean = mean(pers),
-    inv_mean = mean(inv)
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 1.96),
+    pers_upp = pers_mean + (pers_se * 1.96),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 1.96),
+    inv_upp = inv_mean + (inv_se * 1.96)
   ) %>%
   mutate(group = as.factor("All landscape scenarios")) %>%
   ungroup() %>% 
     ggplot(aes(x = roaming, color = roaming)) +   
-    geom_bar(aes(y = pers_mean, fill = roaming), stat = "identity", position = "dodge", width = 0.7) + 
-    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    geom_bar(aes(y = pers_mean, fill = roaming), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.05, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp),  width = 0.1, size = 0.25, show.legend = F) +
     facet_wrap(~ group) +
     expand_limits(y = c(0, 1)) +
     theme(legend.position = "right",
@@ -286,22 +318,36 @@ fig_2_roam <- df_2 %>%
           axis.ticks.x = element_blank(),
           axis.title.x = element_text(size = 14),
           axis.title.y = element_text(size = 14)) +
-    scale_color_manual(values = c("grey80", "grey55", "grey30"), guide = F) + 
+    scale_color_manual(values = c("grey70", "grey45", "grey20"), name = "Movement rule") + 
     scale_fill_manual(values = c("grey80", "grey55", "grey30"), name = "Movement rule") + 
     labs(x = "Movement rule", y = "Persistence probability", tag = "(a)  ")
 
 ## per landscape scenario
-fig_2_scen <- df_2 %>% 
+fig_3_scen <- 
+  df_3 %>% 
   group_by(scenario) %>%
   summarize(
     pers_mean = mean(pers),
-    inv_mean = mean(inv)
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 1.96),
+    pers_upp = pers_mean + (pers_se * 1.96),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 1.96),
+    inv_upp = inv_mean + (inv_se * 1.96)
   ) %>%
   mutate(group = as.factor("All movement\nrules")) %>% 
   ungroup() %>% 
   ggplot(aes(x = scenario, color = scenario)) +   
-    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7) + 
-    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.15, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp),  width = 0.3, size = 0.25, show.legend = F) +
     facet_wrap(~ group) +
     expand_limits(y = c(0, 1)) +
     theme(legend.position = "none",
@@ -309,21 +355,34 @@ fig_2_scen <- df_2 %>%
           axis.ticks.x = element_blank(),
           axis.title.x = element_text(size = 14),
           axis.title.y = element_text(size = 14)) +
-    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
+    scale_color_viridis_d(option = "inferno", begin = 0.05, end = 0.75, direction = -1, guide = F) +
     scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
     labs(x = "Landscape scenario", y = "Persistence probability", tag = "(b)  ")
 
-fig_2_detail <- df_2 %>% 
+fig_3_detail <- df_3 %>% 
   group_by(roaming, scenario) %>%
   summarize(
     pers_mean = mean(pers),
-    inv_mean = mean(inv)
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 1.96),
+    pers_upp = pers_mean + (pers_se * 1.96),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 1.96),
+    inv_upp = inv_mean + (inv_se * 1.96)
   ) %>%
   ungroup() %>% 
   mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
   ggplot(aes(x = scenario, color = scenario)) + 
-    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7) + 
-    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent") + 
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.15, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp), width = 0.3, size = 0.25, show.legend = F) +
     facet_wrap(~ roaming) +
     expand_limits(y = c(0, 1)) +
     theme(legend.position = "right",
@@ -331,32 +390,150 @@ fig_2_detail <- df_2 %>%
           axis.ticks.x = element_blank(),
           axis.title.x = element_text(size = 14),
           axis.title.y = element_text(size = 14)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.05, end = 0.75, direction = -1, name = "Landscape scenario") +
     scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = "Landscape scenario") +
-    scale_color_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
     labs(x = "Landscape scenario", y = "Persistence probability", tag = "(c)  ")
 
-(fig_2 <- plot_spacer() + fig_2_roam + fig_2_scen + fig_2_detail + 
+(fig_3 <- plot_spacer() + fig_3_roam + fig_3_scen + fig_3_detail + 
             plot_layout(nrow = 2, heights = c(1, 1.5), widths = c(1, 3)))
 
 if (save == T) { 
-  ggsave("./plots/final/Fig2_pers_groups.png", width = 13.5, height = 7.5, dpi = dpi) 
-  ggsave("./plots/final/Fig2_pers_groups.pdf", width = 13.5, height = 7.5, device = cairo_pdf)
+  ggsave("./plots/final/Fig3_pers_groups_95.png", width = 13.5, height = 7.5, dpi = dpi) 
+  ggsave("./plots/final/Fig3_pers_groups_95.pdf", width = 13.5, height = 7.5, device = cairo_pdf)
 }
 ```
 
+```{r fig-3-pers-groups-CI50, fig.width = 13.5, fig.height = 7.5}
+## per movement rule
+fig_3_roam_50 <- 
+  df_3 %>% 
+  group_by(roaming) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 0.675),
+    pers_upp = pers_mean + (pers_se * 0.675),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 0.675),
+    inv_upp = inv_mean + (inv_se * 0.675)
+  ) %>%
+  mutate(group = as.factor("All landscape scenarios")) %>%
+  ungroup() %>% 
+    ggplot(aes(x = roaming, color = roaming)) +   
+    geom_bar(aes(y = pers_mean, fill = roaming), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.05, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp),  width = 0.1, size = 0.25, show.legend = F) +
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_color_manual(values = c("grey70", "grey45", "grey20"), name = "Movement rule") + 
+    scale_fill_manual(values = c("grey80", "grey55", "grey30"), name = "Movement rule") + 
+    labs(x = "Movement rule", y = "Persistence probability", tag = "(a)  ")
 
-## Fig. 3: Temporal outbreak dynamics
+## per landscape scenario
+fig_3_scen_50 <- 
+  df_3 %>% 
+  group_by(scenario) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 0.675),
+    pers_upp = pers_mean + (pers_se * 0.675),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 0.675),
+    inv_upp = inv_mean + (inv_se * 0.675)
+  ) %>%
+  mutate(group = as.factor("All movement\nrules")) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = scenario, color = scenario)) +   
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.15, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp),  width = 0.3, size = 0.25, show.legend = F) +
+    facet_wrap(~ group) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "none",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.05, end = 0.75, direction = -1, guide = F) +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, guide = F) +
+    labs(x = "Landscape scenario", y = "Persistence probability", tag = "(b)  ")
 
-```{r fig-3-temp-dynamics, fig.width = 8.9, fig.height = 6.9}
+fig_3_detail_50 <- df_3 %>% 
+  group_by(roaming, scenario) %>%
+  summarize(
+    pers_mean = mean(pers),
+    inv_mean = mean(inv),
+    all_n = n(),
+    ## CIs for persistence
+    pers_n = sum(pers),
+    pers_se = (sqrt(pers_mean * (1 - pers_mean) / all_n)),
+    pers_low = pers_mean - (pers_se * 0.675),
+    pers_upp = pers_mean + (pers_se * 0.675),
+    ## CIs for invasion
+    inv_n = sum(inv),
+    inv_se = (sqrt(inv_mean * (1 - inv_mean) / all_n)),
+    inv_low = inv_mean - (inv_se * 0.675),
+    inv_upp = inv_mean + (inv_se * 0.675)
+  ) %>%
+  ungroup() %>% 
+  mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
+  ggplot(aes(x = scenario, color = scenario)) + 
+    geom_bar(aes(y = pers_mean, fill = scenario), stat = "identity", position = "dodge", width = 0.7, color = NA) + 
+    geom_bar(aes(y = inv_mean), stat = "identity", position = "dodge", width = 0.7, fill = "transparent", size = 0.25) + 
+    geom_errorbar(aes(ymin = inv_low, ymax = inv_upp), width = 0.15, size = 0.25, show.legend = F) +
+    geom_errorbar(aes(ymin = pers_low, ymax = pers_upp), width = 0.3, size = 0.25, show.legend = F) +
+    facet_wrap(~ roaming) +
+    expand_limits(y = c(0, 1)) +
+    theme(legend.position = "right",
+          axis.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.title.x = element_text(size = 14),
+          axis.title.y = element_text(size = 14)) +
+    scale_color_viridis_d(option = "inferno", begin = 0.05, end = 0.75, direction = -1, name = "Landscape scenario") +
+    scale_fill_viridis_d(option = "inferno", begin = 0.15, end = 0.85, direction = -1, name = "Landscape scenario") +
+    labs(x = "Landscape scenario", y = "Persistence probability", tag = "(c)  ")
+
+(fig_3_50 <- plot_spacer() + fig_3_roam_50 + fig_3_scen_50 + fig_3_detail_50 + 
+               plot_layout(nrow = 2, heights = c(1, 1.5), widths = c(1, 3)))
+
+if (save == T) { 
+  ggsave("./plots/final/Fig3_pers_groups_50.png", width = 13.5, height = 7.5, dpi = dpi) 
+  ggsave("./plots/final/Fig3_pers_groups_50.pdf", width = 13.5, height = 7.5, device = cairo_pdf)
+}
+```
+
+## Fig. 4: Temporal outbreak dynamics
+
+```{r fig-4-temp-dynamics, fig.width = 8.9, fig.height = 6.9}
 ## normed transmission per habitat quality - over time
-df_3 <- df_inf_plots %>% 
+df_4 <- df_inf_plots %>% 
   filter(
     cfr == cfr_filter,
     week_pathogen > 0, 
     week_pathogen < 521
   )
 
-df_trans <- df_3 %>%
+df_trans <- df_4 %>%
   filter(duration_weeks > 260) %>% 
   dplyr::select(
     run,
@@ -411,7 +588,7 @@ df_dur <- df_infmean_plots %>%
   group_by(roaming, scenario, duration_quarter) %>% 
   summarize(prop = n() / n)
 
-df_ext <- df_3 %>% 
+df_ext <- df_4 %>% 
   group_by(roaming, scenario, run) %>% 
   summarize(week_ext = max(week_ext - week_release)) %>% 
   filter(week_ext < 520) %>% 
@@ -425,7 +602,7 @@ tm <- df_infmean_plots %>%
   group_by(roaming, scenario) %>%
   summarize(tm = mean(duration_weeks, na.rm = T) / 52)
 
-(fig_3 <- df_trans %>% 
+(fig_4 <- df_trans %>% 
   filter(trans %in% c("w", "b")) %>%
   ggplot(aes(quarter / 4, avg)) +
     geom_bar(data = filter(df_dur, duration_quarter < 50), aes(duration_quarter / 4 + 0.125, prop / 5), 
@@ -453,15 +630,15 @@ tm <- df_infmean_plots %>%
           legend.text = element_text(size = 10.5)))
 
 if (save == T) {  
-  ggsave("./plots/final/Fig3_dynamics_b+w.png", width = 8.9, height = 6.9, dpi = dpi)
-  ggsave("./plots/final/Fig3_dynamics_b+w.pdf", width = 8.9, height = 6.9, device = cairo_pdf)
+  ggsave("./plots/final/Fig4_dynamics_b+w.png", width = 8.9, height = 6.9, dpi = dpi)
+  ggsave("./plots/final/Fig4_dynamics_b+w.pdf", width = 8.9, height = 6.9, device = cairo_pdf)
 }
 ```
 
 
-## Fig. 4: Multipanel movement + landscape consequences
+## Fig. 5: Multipanel movement + landscape consequences
 
-```{r fig-4-MultiBox-Data}
+```{r fig-5-MultiBox-Data}
 ## data set quarterly
 df_quarter <- df_inf_plots %>% 
   filter(
@@ -579,11 +756,11 @@ df_m6 <- df_quarter %>%
                              labels = c("Within-cluster", "Between-cluster")))
 ```
 
-### Fig. 4a Box + Beeswarm
+### Fig. 5: Box + Beeswarm
 
-```{r fig-4-MultiBox, fig.width = 9, fig.height = 11.5}
+```{r fig-5-MultiBox, fig.width = 9, fig.height = 11.5}
 ## a) density of hosts
-fig_4a <- ggplot(df_m1, aes(x = scenario, y = avg, 
+fig_5a <- ggplot(df_m1, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.1, size = 0.15, color = "grey80") + 
@@ -601,7 +778,7 @@ fig_4a <- ggplot(df_m1, aes(x = scenario, y = avg,
         strip.text = element_text(size = 12.5))
 
 ## b) visits by ranging males
-fig_4b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) +   
+fig_5b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.25, size = 0.25, color = "grey80") + 
   geom_boxplot(aes(group = interaction(scenario, type)), 
@@ -619,7 +796,7 @@ fig_4b <- ggplot(df_m2, aes(x = scenario, y = med, group = type, color = type)) 
         strip.background = element_blank())
 
 ## c) contact rates per quality class
-fig_4c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) +   
+fig_5c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) +   
   geom_quasirandom(width = 0.05, dodge.width = 0.95, 
                    alpha = 0.1, size = 0.1, color = "grey80") + 
   geom_path(data = hom, aes(x = scenario, y = mean, group = roaming), 
@@ -640,7 +817,7 @@ fig_4c <- ggplot(df_m3, aes(x = scenario, y = med, group = type, color = type)) 
         strip.background = element_blank())
 
 ## d) simultaneously affected patches
-fig_4d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
+fig_5d <- ggplot(df_m4, aes(x = scenario, y = max)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
                    alpha = 0.25, size = 0.25, color = "grey65") + 
   geom_boxplot(aes(group = scenario), width = 0.7,
@@ -656,7 +833,7 @@ fig_4d <- ggplot(df_m4, aes(x = scenario, y = max)) +
         strip.background = element_blank())
 
 ## e) affected patches
-fig_4e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +   
+fig_5e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +   
   geom_quasirandom(width = 0.2, dodge.width = 0.175, 
                    alpha = 0.25, size = 0.25, color = "grey65") + 
   geom_boxplot(width = 0.7,
@@ -672,7 +849,7 @@ fig_4e <- ggplot(df_m5, aes(x = scenario, y = max, group = scenario)) +
         strip.background = element_blank())
 
 ## f) trans within + between
-fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg, 
+fig_5f <- ggplot(df_m6, aes(x = scenario, y = avg, 
                             group = type, color = type)) +   
   geom_quasirandom(width = 0.1, dodge.width = 0.85, 
                    alpha = 0.1, size = 0.15, color = "grey80") + 
@@ -691,7 +868,7 @@ fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg,
         strip.text = element_blank(),
         strip.background = element_blank())
  
-((fig_4 <- fig_4a + fig_4b + fig_4c + fig_4d + fig_4e + fig_4f) *
+((fig_5 <- fig_5a + fig_5b + fig_5c + fig_5d + fig_5e + fig_5f) *
     theme(axis.text.y = element_text(size = 10),
           axis.title.y = element_text(size = 9.5),
           plot.margin = margin(1, 1, 1, 1),
@@ -702,16 +879,16 @@ fig_4f <- ggplot(df_m6, aes(x = scenario, y = avg,
 
 ## final panel
 if (save == T) { 
-  ggsave("./plots/final/Fig4_multi_box.png", width = 9, height = 11.5, dpi = 750) 
-  ggsave("./plots/final/Fig4b_multi_box.pdf", width = 9, height = 11.5, device = cairo_pdf) 
+  ggsave("./plots/final/Fig5_multi_box.png", width = 9, height = 11.5, dpi = 750) 
+  ggsave("./plots/final/Fig5b_multi_box.pdf", width = 9, height = 11.5, device = cairo_pdf) 
 }
 ```
 
-### Fig. 4b: Median + Line
+### Fig. 4 v2: Median + Line
 
 ```{r fig-5-multi-median, fig.width = 9, fig.height = 11.5, eval = F, include = F}
 ## a) density of hosts
-fig_4b_a <- df_m1  %>% 
+fig_5b_a <- df_m1  %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(avg)) %>% 
   ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
@@ -729,7 +906,7 @@ fig_4b_a <- df_m1  %>%
           strip.text = element_text(size = 12))
 
 ## b) visits by ranging males
-fig_4b_b <- df_m2 %>% 
+fig_5b_b <- df_m2 %>% 
   summarize(avg = mean(med, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, group = type, color = type, shape = type)) +   
     geom_path(position = position_dodge(width = 0.55), size = 1, alpha = 0.4) +
@@ -747,7 +924,7 @@ fig_4b_b <- df_m2 %>%
           strip.background = element_blank())
 
 ## c) contact rates per quality class
-fig_4b_c <- df_m3  %>% 
+fig_5b_c <- df_m3  %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = mean(med)) %>% 
   ggplot(aes(x = scenario, y = avg)) +   
@@ -773,21 +950,17 @@ fig_4b_c <- df_m3  %>%
           strip.background = element_blank())
 
 ## d) infected patches
-fig_4b_d <- df_m4 %>% 
-  group_by(roaming, scenario, type) %>% 
+fig_5b_d <- df_m4 %>% 
+  group_by(roaming, scenario) %>% 
   summarize(avg = mean(max, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, 
-             group = type, color = type, shape = type)) +   
+             group = roaming)) +   
     geom_path(position = position_dodge(width = 0.55), 
-              size = 1, alpha = 0.4) +
+              size = 1, alpha = 0.4, color = "#cc5d00") +
     geom_point(position = position_dodge(width = 0.55), size = 2.5) +
     facet_grid(~ roaming) +
-    scale_y_continuous(limits = c(0, 1),
-                       breaks = seq(0, 1, by = 0.25)) +
-    scale_color_manual(values = c("#cc5d00"), guide = F) + 
-    scale_shape_manual(values = c(19), guide = F) + 
     labs(x = "Landscape scenario", 
-         y = "\nProportion of\ninfected patches", 
+         y = "\nMaximum number of\nsimultaneously affected patches", 
          tag = "(d)", title = NULL, subtitle = NULL) +
     theme(axis.ticks.x = element_blank(),
           axis.text.x = element_blank(),
@@ -796,19 +969,16 @@ fig_4b_d <- df_m4 %>%
           strip.background = element_blank())
 
 ## e) affected patches
-fig_4b_e <- df_m5 %>% 
-  group_by(roaming, scenario, type) %>% 
+fig_5b_e <- df_m5 %>% 
+  group_by(roaming, scenario) %>% 
   summarize(avg = mean(max, na.rm = T)) %>% 
-  ggplot(aes(x = scenario, y = avg, 
-             group = type, color = type, shape = type)) +   
+  ggplot(aes(x = scenario, y = avg, group = roaming)) +   
     geom_path(position = position_dodge(width = 0.55), 
-              size = 1, alpha = 0.4) +
-    geom_point(position = position_dodge(width = 0.55), size = 2.5) +
+              size = 1, alpha = 0.4, color = "#a01e1e") +
+    geom_point(position = position_dodge(width = 0.55), size = 2.5, color = "#a01e1e") +
     facet_grid(~ roaming) +
     scale_y_continuous(limits = c(0, 1), 
                        breaks = seq(0, 1, by = 0.25)) +
-    scale_color_manual(values = c("#a01e1e"), guide = F) + 
-    scale_shape_manual(values = c(19), guide = F) + 
     labs(x = "Landscape scenario", 
          y = "\nProportion of\naffected patches", 
          tag = "(e)", title = NULL, subtitle = NULL) +
@@ -819,7 +989,7 @@ fig_4b_e <- df_m5 %>%
           strip.background = element_blank())
 
 ## f) trans within + between
-fig_4b_f <- df_m6 %>% 
+fig_5b_f <- df_m6 %>% 
   group_by(roaming, scenario, type) %>% 
   summarize(avg = median(avg, na.rm = T)) %>% 
   ggplot(aes(x = scenario, y = avg, 
@@ -843,7 +1013,7 @@ fig_4b_f <- df_m6 %>%
           strip.background = element_blank())
 
 ## final panel
-(fig_4_b <- (fig_4b_a + fig_4b_b + fig_4b_c + fig_4b_d + fig_4b_e + fig_4b_f) *
+(fig_5_b <- (fig_5b_a + fig_5b_b + fig_5b_c + fig_5b_d + fig_5b_e + fig_5b_f) *
     theme(axis.text.y = element_text(size = 9.5),
           axis.title.y = element_text(size = 11),
           plot.margin = margin(1, 1, 1, 1),
@@ -853,16 +1023,16 @@ fig_4b_f <- df_m6 %>%
     plot_layout(ncol = 1))
 
 if (save == T) { 
-  ggsave("./plots/final/Fig4b_multi_med.png", width = 9, height = 11.5, dpi = dpi) 
-  ggsave("./plots/final/Fig4b_multi_med.pdf", width = 9, height = 11.5, device = cairo_pdf) 
+  ggsave("./plots/final/Fig5_v2_multi_med.png", width = 9, height = 11.5, dpi = dpi) 
+  ggsave("./plots/final/Fig5_v2_multi_med.pdf", width = 9, height = 11.5, device = cairo_pdf) 
 }
 ```
 
 
-## Fig. 5: Probabilities of invasion success and persistence per case fatality risk
+## Fig. 6: Probabilities of invasion success and persistence per case fatality risk
 
-```{r fig-5-pers-cfr-tile, fig.width = 8, fig.height = 6.3}
-df_5 <- df_infmean_plots %>% 
+```{r fig-6-pers-cfr-tile, fig.width = 8, fig.height = 6.3}
+df_6 <- df_infmean_plots %>% 
   mutate(roaming = factor(roaming, labels = lab_roam_n)) %>% 
   group_by(roaming, scenario, cfr) %>%
   summarize(
@@ -871,8 +1041,8 @@ df_5 <- df_infmean_plots %>%
   ) %>% 
   ungroup()
 
-fig_5a <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
-  geom_tile(aes(fill = pers_mean)) +
+fig_6a <- ggplot(df_6, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = pers_mean), color = "white", size = 0.3) +
   facet_wrap(~ roaming) + 
   scale_fill_viridis(option = "viridis", name = "Probability", limits = c(0, 0.48),
                      breaks = seq(0, 0.4, by = 0.1)) +
@@ -881,8 +1051,8 @@ fig_5a <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
   labs(x = "Case fatality ratio", y = NULL, tag = "(a)", 
        title = "Long-term persistence (outbreak duration > 10 years)")
 
-fig_5b <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
-  geom_tile(aes(fill = inv_mean)) +
+fig_6b <- ggplot(df_6, aes(cfr, fct_rev(scenario))) +
+  geom_tile(aes(fill = inv_mean), color = "white", size = 0.3) +
   facet_wrap(~ roaming) + 
   scale_fill_viridis(option = "cividis", name = "Probability", limits = c(0, 1)) +
   scale_x_discrete(expand = c(0, 0)) +
@@ -890,7 +1060,7 @@ fig_5b <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
   labs(x = "Case fatality ratio", y = NULL, tag = "(b)", 
        title = "Short-term persistence (outbreak duration > 2.5 years)")
 
-(fig_5 <- (fig_5a + fig_5b) *
+(fig_6 <- (fig_6a + fig_6b) *
   theme(strip.text = element_text(size = 11),
         axis.text.x = element_text(size = 10),
         axis.text.y = element_text(size = 11),
@@ -902,11 +1072,13 @@ fig_5b <- ggplot(df_5, aes(cfr, fct_rev(scenario))) +
   plot_layout(ncol = 1))
 
 if (save == T) { 
-  ggsave("./plots/final/Fig5_pers_cfr.png", width = 8, height = 6.3, dpi = dpi) 
-  ggsave("./plots/final/Fig5_pers_cfr.pdf", width = 8, height = 6.3, device = cairo_pdf)
+  ggsave("./plots/final/Fig6_pers_cfr_v2.png", width = 8, height = 6.3, dpi = dpi) 
+  ggsave("./plots/final/Fig6_pers_cfr_v2.pdf", width = 8, height = 6.3, device = cairo_pdf)
 }
 ```
 
+
+# Figures Supplement
 
 ## Fig. S3: Movement weights
 
@@ -1009,7 +1181,7 @@ df_s7 <- df_infmean_plots %>%
                                   "> 7.5 years", "> 10 years")))
 
 (fig_s7 <- ggplot(df_s7, aes(cfr, fct_rev(scenario))) +
-  geom_tile(aes(fill = prob)) +
+  geom_tile(aes(fill = prob), color = "white", size = 0.33) +
   facet_grid(threshold ~ roaming) + 
   scale_fill_viridis(name = "Persistence probability", limits = c(0, 1),
                      guide = guide_colourbar(direction = "horizontal",
@@ -1031,8 +1203,8 @@ df_s7 <- df_infmean_plots %>%
         legend.position = "bottom"))
 
 if (save == T) { 
-  ggsave("./plots/final/FigS7_cfr_persall.png", width = 7, height = 8, dpi = dpi) 
-  ggsave("./plots/final/FigS7_cfr_persall.pdf", width = 7, height = 8, device = cairo_pdf) 
+  ggsave("./plots/final/FigS7_cfr_persall_v2.png", width = 7, height = 8, dpi = dpi) 
+  ggsave("./plots/final/FigS7_cfr_persall_v2.pdf", width = 7, height = 8, device = cairo_pdf) 
 }
 ```
 
@@ -1116,7 +1288,8 @@ if (save == T) {
 }
 ```
 
-## Fig. S10: "Density pre- and post release"
+
+## Fig. S10: Density pre- and post release
 
 ```{r}
 df_all %>% 
@@ -1154,6 +1327,117 @@ df_all %>%
 if (save == T) { 
   ggsave("./plots/final/FigS10_density_pre+post.png", width = 9, height = 5, dpi = 750)
   ggsave("./plots/final/FigS10_density_pre+post.pdf", width = 9, height = 5, device = cairo_pdf) 
+}
+```
+
+
+## Fig. S11: Infected individuals over time
+
+```{r fig-s11-inf-ind-time, fig.width = 12, fig.height = 9}
+df_s11 <- df_inf_plots %>% 
+  filter(cfr == cfr_filter) %>% 
+  group_by(scenario, roaming) %>% 
+  mutate(pers = ifelse(duration_weeks > 520, ">10", "<10")) %>% 
+  group_by(scenario, roaming, week_pathogen) %>% 
+  mutate(
+    meanInf  = mean(ind_inf),
+    duration_weeks = if_else(duration_weeks == week_pathogen, duration_weeks, NA_real_)
+  )
+
+labs <- c("\u2264 10 years", "> 10 years")
+
+fig_s11 <- ggplot() +   
+  geom_line(data = filter(df_s11, pers == ">10"), aes(week_pathogen, ind_inf, group = run, 
+            color = ">10"), size = 0.3, alpha = 0.4) +
+  geom_line(data = filter(df_s11, pers == "<10"), aes(week_pathogen, ind_inf, group = run, 
+            color = "<10"), size = 0.3, alpha = 0.4) +
+  geom_line(data = df_s11, aes(week_pathogen, meanInf), color = "black", size = 0.35) +
+  geom_vline(xintercept = c(130, 260, 390, 520), linetype = "dashed", size = 0.2, color = "grey40") +
+  geom_rug(data = filter(df_s11, pers == "<10"), aes(duration_weeks), 
+           sides = "b", alpha = 0.4, size = 0.3) +
+  facet_grid(scenario ~ roaming) +
+  scale_x_continuous(breaks = seq(0, 520, by = 52), limits = c(0, 520), 
+                       labels = 0:10) + 
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_color_manual(values = c("<10" = "grey20", ">10" = "tan1"), 
+                     name = "Outbreak duration:", labels = labs) +
+  guides(color = guide_legend(override.aes = list(size = 0.6, alpha = 1))) +
+  theme(legend.position = c(0.235, 0.92), 
+        legend.box = "horizontal",
+        legend.title = element_text(size = 10, hjust = 0.5),
+        legend.text = element_text(size = 10),
+        legend.key = element_rect(fill = NA, color = NA),
+        legend.key.width = unit(2.2, "lines"),
+        legend.background = element_rect(fill = "white", color = "grey40", size = 0.3),
+        plot.background = element_rect(fill = NA, color = NA),
+        panel.grid.major.y = element_line(color = "grey85", size = 0.3),
+        panel.grid.minor.y = element_line(color = "grey85", size = 0.3)) +
+  labs(x = "Years since pathogen release", y = "Infected individuals")
+
+if (save == T) { 
+  ggsave("./plots/final/FigS11_dynamics_inf.png", width = 12, height = 9, dpi = 750)
+  ggsave("./plots/final/FigS11_dynamics_inf.pdf", width = 12, height = 9, device = cairo_pdf) 
+}
+```
+
+
+## Fig. S12: Affected habitat cells over time
+
+```{r fig-s12-inf-cells-time, fig.width = 11.5, fig.height = 8}
+df_quarter %>% 
+  dplyr::select(run, roaming, scenario, week_pathogen, cell_infectious, patches_0) %>% 
+  mutate(roaming = factor(roaming, levels = lab_roam_n, labels = lab_roam)) %>% 
+  group_by(roaming, scenario, week_pathogen) %>% 
+  mutate(
+    prop_cell_infectious = cell_infectious / (1250 - patches_0),
+    avg = sum(prop_cell_infectious) / n()
+  ) %>% 
+  ggplot(aes(week_pathogen, prop_cell_infectious)) + 
+    #geom_vline(xintercept = 78, color = "grey40", size = 0.3, linetype = "dashed") +  ## for Rev. 2
+    #geom_vline(xintercept = 130, color = "grey40", size = 0.3) +  ## for Rev. 2
+    geom_line(aes(group = run), color = "grey30", size = 0.4, alpha = 0.2) + 
+    geom_line(aes(week_pathogen, avg), color = "#cc5d00", size = 0.7) +
+    facet_grid(scenario ~ roaming) +
+    scale_x_continuous(breaks = seq(0, 520, by = 52), limits = c(0, 520), 
+                       labels = 0:10, expand = c(0.01, 0.01)) +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +
+    theme(panel.grid.major.y = element_line(color = "grey70", size = 0.3, linetype = "dotted"),
+          axis.text = element_text(size = 10)) +
+    labs(x = "Years since pathogen release", y = "Number of affected habitat patches")
+
+if (save == T) { 
+  ggsave("./plots/final/FigS12_affected_cells.png", width = 11.5, height = 8, dpi = 750)
+  ggsave("./plots/final/FigS12_affected_cells.pdf", width = 11.5, height = 8, device = cairo_pdf) 
+}
+```
+
+
+## Fig. S13: Cumulative number of affect chabitat cells
+
+```{r fig-s13-cum-inf-cells-time, fig.width = 11.5, fig.height = 8}
+df_quarter %>% 
+  dplyr::select(run, roaming, scenario, week_pathogen, cell_infected, patches_0) %>% 
+  mutate(roaming = factor(roaming, levels = lab_roam_n, labels = lab_roam)) %>% 
+  group_by(roaming, scenario, week_pathogen) %>% 
+  mutate(
+    prop_cell_infected = cell_infected / (1250 - patches_0),
+    avg = sum(prop_cell_infected) / n()
+  ) %>% 
+  ggplot(aes(week_pathogen, prop_cell_infected)) + 
+    #geom_vline(xintercept = 78, color = "grey40", size = 0.3, linetype = "dashed") +  ## for Rev. 2
+    geom_line(aes(group = run), color = "grey30", size = 0.4, alpha = 0.2) + 
+    geom_line(aes(week_pathogen, avg), color = "#b22222", size = 0.7) +
+    facet_grid(scenario ~ roaming) +
+    scale_x_continuous(breaks = seq(0, 520, by = 52), limits = c(0, 520), 
+                       labels = 0:10, expand = c(0.01, 0.01)) +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.25), limits = c(0, 1)) +
+    theme(panel.grid.major.y = element_line(color = "grey70", size = 0.3, linetype = "dotted"),
+          axis.text = element_text(size = 10)) +
+    labs(x = "Years since pathogen release", y = "Cumulative number of affected habitat patches")
+
+if (save == T) { 
+  ggsave("./plots/final/FigS13_affected_cells_cum.png", width = 11.5, height = 8, dpi = 750)
+  ggsave("./plots/final/FigS13_affected_cells_cum.pdf", width = 11.5, height = 8, device = cairo_pdf) 
 }
 ```
 

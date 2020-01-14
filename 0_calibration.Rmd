@@ -204,6 +204,7 @@ R0_proc %>%
              position = position_jitter(width = 0.1), size = 1.5, alpha = 0.25) +
   geom_hline(yintercept = 1, linetype = "dotted") +
   geom_boxplot(outlier.shape = NA, width = 0.125, colour = "gray40", fill = "white") +  
+  stat_summary(aes(color = roaming), geom = "point", fun.y = "mean", size = 2) +
   theme(legend.position = "none", axis.text.x = element_text(angle = 0, hjust = 0.5)) +
   labs(x = "Movement rule", y = "R0 (number of secondary infections)") +
   coord_cartesian(xlim = c(1.15, 4), ylim = c(0, 10)) +
