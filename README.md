@@ -1,5 +1,5 @@
 # SwiFCoIBMove_mue4
-🐗🐾 SwiFCoIBMove used in OIKOS (calibrated with mue = 4)
+Model setup for the publication Scherer et al. (2020) in *Oikos*:
 
 > Moving infections: individual movement decisions drive disease persistence in spatially structured landscapes  
 Cédric Scherer, Viktoriia Radchuk, Mathias Franz, Hans‐Hermann Thulke, Martin Lange, Volker Grimm & Stephanie Kramer‐Schadt  
