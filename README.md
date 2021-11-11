@@ -1,5 +1,5 @@
 # Scherer et al. 2020 *OIKOS* SwiFCoIBMove
-10.5281/zenodo.2605708
+[![DOI](https://zenodo.org/badge/177115379.svg)](https://zenodo.org/badge/latestdoi/177115379)  
 
 > **Cédric Scherer**, **Viktoriia Radchuk**, **Mathias Franz**, Hans‐Hermann Thulke, Martin Lange, Volker Grimm & **Stephanie Kramer‐Schadt** (2020) Moving infections: individual movement decisions drive disease persistence in spatially structured landscapes. *Oikos* 129 (5):651–667. DOI: [10.1111/oik.07002](https://doi.org/10.1111/oik.07002)
 
